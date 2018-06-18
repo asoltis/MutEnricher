@@ -92,12 +92,10 @@ Files/folders:
         Contains example covariate and covariate weights files for running the covariate clustering background method:
 
         For coding:
-            1. ucsc.refFlat.20170829.no_chrMY.covariates.txt.gz
-               (NOTE: uncompress with gunzip prior to use)
+            1. ucsc.refFlat.20170829.no_chrMY.covariates.txt
             2. ucsc.refFlat.20170829.no_chrMY.covariate_weights.txt
         For noncoding:
-            1. ucsc.refFlat.20170829.promoters_up1kb_down200.no_chrMY.covariates.txt.gz
-               (NOTE: uncompress with gunzip prior to use)
+            1. ucsc.refFlat.20170829.promoters_up1kb_down200.no_chrMY.covariates.txt
             2. ucsc.refFlat.20170829.promoters_up1kb_down200.no_chrMY.covariate_weights.txt
 
     3. nonsilent_terms.txt
