@@ -1,0 +1,9 @@
+maxits=1000
+convits=50
+dampfact=0.9
+number of data points: 1176
+Preferences: -0.150000
+
+Number of identified clusters: 37
+Number of iterations: 114
+Elapsed time: 0.13 minutes

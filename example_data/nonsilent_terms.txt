@@ -1,0 +1,11 @@
+Gene	Gene.refGene	x
+Effect	ExonicFunc.refGene	frameshift_deletion
+Effect	ExonicFunc.refGene	frameshift_insertion
+Effect	ExonicFunc.refGene	frameshift_substitution
+Effect	ExonicFunc.refGene	nonframeshift_deletion
+Effect	ExonicFunc.refGene	nonframeshift_insertion
+Effect	ExonicFunc.refGene	nonframeshift_substitution
+Effect	ExonicFunc.refGene	nonsynonymous_SNV
+Effect	ExonicFunc.refGene	stopgain
+Effect	ExonicFunc.refGene	stoploss
+Effect	Func.refGene	splicing
