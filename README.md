@@ -83,8 +83,7 @@ Files/folders:
     1. example_data/annotation_files
 
         Contains example GTF and BED files for running MutEnricher's coding and noncoding modules. 
-
-           (NOTE: uncompress with gunzip prior to use)
+        1. ucsc.refFlat.20170829.no_chrMY.gtf.gz (NOTE: uncompress with gunzip prior to use)
         2. ucsc.refFlat.20170829.promoters_up2kb_downUTR.no_chrMY.bed
 
     2. example_data/covariates
