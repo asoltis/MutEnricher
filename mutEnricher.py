@@ -33,6 +33,9 @@ def main():
     add_noncoding_parser(subparsers)
 
     # Get args
+    if len(sys.argv[1:])==0:
+        parser.print_help()
+        parser.exit()
     args = parser.parse_args()
     
     # Run appropriate command

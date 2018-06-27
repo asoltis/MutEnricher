@@ -51,6 +51,8 @@ See help pages and associated documentation for methodological and run details.
         2. Run the following command: 
             python setup.py build_ext --inplace
 
+    NOTE: The python alias should point to the executable in the install bin directory, e.g. /path/to/python/bin/python. 
+    
     Successful completion of the above steps will generate math_funcs.so, which is used by MutEnricher. 
 
 ---
@@ -76,9 +78,16 @@ the noncoding module). Both also require a copy of an indexed genome FASTA file 
 # Example data #
 ################
 
-We include various example files for testing MutEnricher on synthetic somatic data. See the "example_data" sub-folder.
+We include various example files for testing MutEnricher on synthetic somatic data. See the "example_data" sub-folder. 
 
-Files/folders:
+Several quickstart commands are provided in example_data/quickstart_commands.txt file. A sample quickstart command for coding analysis:
+
+    cd example_data/annotation_files
+    gunzip ucsc.refFlat.20170829.no_chrMY.gtf.gz
+    cd ..
+    python ../mutEnricher.py coding annotation_files/ucsc.refFlat.20170829.no_chrMY.gtf vcf_files.txt --anno-type nonsilent_terms.txt -o test_out_coding --prefix test_global
+
+Files/folders contained in example_data:
     
     1. example_data/annotation_files
 
