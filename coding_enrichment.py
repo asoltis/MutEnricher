@@ -155,19 +155,18 @@ def run(parser,args,version):
     if ap_alg not in ['fast','slow']: 
         parser.error("AP algorithm type must be one of either 'fast' or 'slow'.")
 
-    # create log file for parameters
-    oflog = open(outdir + prefix[:-1] + '.params.log','w')
-    oflog.writelines('%s\t%s\n'%('Version',version))
-    oflog.writelines('%s\t%s\n'%('GTF',vargs['GTF']))
-    oflog.writelines('%s\t%s\n'%('VCFs',vargs['vcfs']))
-    if use_covars: oflog.writelines('background_type\tcovariate\n')
-    elif use_local: oflog.writelines('background_type\tlocal\n')
-    else: oflog.writelines('background_type\tglobal\n')
+    # create logging file
+    oflog = open(outdir + prefix[:-1] + '.log','w')
+    oflog.writelines('%s: %s\n'%('MutEnricher version',version))
+    oflog.writelines('%s: %s\n'%('GTF',vargs['GTF']))
+    oflog.writelines('%s: %s\n'%('VCFs',vargs['vcfs']))
+    if use_covars: oflog.writelines('background_type: covariate\n')
+    elif use_local: oflog.writelines('background_type: local\n')
+    else: oflog.writelines('background_type: global\n')
     for param in sorted(vargs.keys()):
         if param in ['GTF','vcfs']: continue
-        oflog.writelines('%s\t%s\n'%(param,str(vargs[param])))
-   
-    oflog.close() 
+        oflog.writelines('%s: %s\n'%(param,str(vargs[param])))
+    oflog.writelines('\n')
 
     # Timing
     time0_master = time.time()
@@ -211,6 +210,7 @@ def run(parser,args,version):
         ofgnr = open('%s%s'%(outdir,'unrecognized_genes.txt'),'w')
         for g in genes_not_recognized: ofgnr.writelines(g+'\n')
         ofgnr.close()
+        oflog.writelines('Skipped %d genes from input MAF not present in GTF file.\n'%(gnr_count))
     else:
         if mapr != None: mappable = TabixFile(mapr)
         else: mappable = None
@@ -228,7 +228,8 @@ def run(parser,args,version):
         name = g.name
         gene2index[name] = ind
     print 'Loaded %d genes from input GTF file.'%(len(genes))
-    
+    oflog.writelines('Loaded %d genes from input GTF file.\n'%(len(genes)))
+
     # load nonsilent terms
     terms = load_nonsilent_terms(tType)
     
@@ -262,7 +263,15 @@ def run(parser,args,version):
                     l = line.strip().split('\t')
                     num,exemplar,members = l[0],l[1],l[2]
                     gene_clusters[c].append([num,exemplar,members.split(';')])
-            
+    
+        # log cluster info
+        tot_g_from_covars, tot_clusters = 0, 0
+        for c in gene_clusters:
+            for cl in gene_clusters[c]:
+                tot_clusters += 1
+                tot_g_from_covars += len(cl[2])
+        oflog.writelines('Clustered %d genes with covariates into %d clusters.\n'%(tot_g_from_covars,tot_clusters))
+
         # Map to genes
         for contig in gene_clusters:
             for clust in gene_clusters[contig]:
@@ -314,7 +323,8 @@ def run(parser,args,version):
         print 'Extracting mutations from MAF input file...'
         genes,sample_names = count_mutations_from_maf(MAF,genes,gene2index,terms,tType,snps_only,blacklist)
         ns = len(sample_names) # set number of samples
-    
+        oflog.writelines('%d samples detected in input MAF.\n'%(ns))
+        
         if use_covars: # Get local bacgkround rates for small cluster size genes after counting
             print '\nCalculating local background rates for %d genes with fewer than %d'%(len(scr),min_clust_size)
             print 'cluster members.'
@@ -357,6 +367,16 @@ def run(parser,args,version):
         genes = sorted(genes,key=lambda x:x.index) # re-sort new genes by index
         print 'Done extracting mutations from VCF files (%0.2f min.).'%((time.time() - time0_mutc)/60)
     
+    # log total mutations
+    total_nonsilent,total_muts,tot_g_with_nonsilent = 0,0,0
+    for g in genes:
+        total_muts += g.total_mutations
+        total_nonsilent += g.total_nonsilent_mutations
+        if g.total_nonsilent_mutations > 0: tot_g_with_nonsilent += 1
+    oflog.writelines('%d total non-silent somatic mutations identified in %d genes.\n'%(total_nonsilent,tot_g_with_nonsilent))
+    oflog.writelines('%d total somatic mutations identified in gene limits.\n'%(total_muts))
+
+    # close and re-open pool
     pool.close()
     pool = mp.Pool(processes=nprocessors)
      
@@ -410,9 +430,14 @@ def run(parser,args,version):
     print '\n-----------------------CANDIDATE HOTSPOT FINDING-----------------------'
     print 'Finding candidate somatic hotspots in genes...'
     time0_hs = time.time()
+    tot_g_with_hs, tot_hotspots = 0, 0
     for g in genes:
         if g.total_nonsilent_mutations < min_clust_vars: continue
         g.find_hotspots(dist=max_hs_dist,min_clust_vars=min_clust_vars)
+        if len(g.clusters) > 0:
+            tot_g_with_hs += 1
+            tot_hotspots += len(g.clusters)
+    oflog.writelines('Identified %d candidate hotspots in %d genes for testing.\n'%(tot_hotspots,tot_g_with_hs))
     print 'Candidate hotspots obtained (%0.2f min.).'%((time.time()-time0_hs)/60)
 
     # Calculate enrichment p-values
@@ -461,6 +486,7 @@ def run(parser,args,version):
     for g in g_enr:
         g_pvals.append(g.gene_pval)
     g_fdrs = fdr_BH(array(g_pvals))
+    tot_g_output = 0
     for i,g in enumerate(g_enr):
         g.gene_qval = g_fdrs[i]
         bgp = g.background_prob
@@ -489,8 +515,10 @@ def run(parser,args,version):
                                                                                   gpv,fdr,nsamps,pos_counts,mut_counts,sampstr) 
         
         ofr.writelines(ol)
+        tot_g_output += 1
     ofr.close()
-    
+    oflog.writelines('\n%d gene enrichment results reported.\n'%(tot_g_output))
+
     # get hotspot enrichments
     print '\nCalculating hotspot enrichment p-values with negative binomial tests...'
     time0_hse = time.time()
@@ -537,12 +565,14 @@ def run(parser,args,version):
         ostr = '%s\t%s\t%d\t%d\t%d\t%s\t%0.3g\t%0.3g\t%0.3g\t%d\t%s\t%s\t%s\n'%(tuple(cr))
         of.writelines(ostr)
     of.close()
-    
+    oflog.writelines('%d gene hotspot enrichment results reported.\n'%(len(cluster_enrichments)))
+
     # Save genes analysis as python pickle object
     cPickle.dump(genes,open(outdir+prefix+'gene_data.pkl','w'))
 
-    # close pool
+    # close pool, log file
     pool.close()
+    oflog.close()
 
     # Finish statement
     print '\nAnalysis finished in %0.2f minutes.\n'%((time.time() - time0_master)/60)
@@ -697,7 +727,8 @@ def count_mutations_from_vcfs(VCFs,names,genes,terms,tType,snps_only,blacklist=N
             
             tot_bg,tot_nonsilent = 0,0 
             for gstr in g_strings:
-                for v in vcf(gstr):
+                prior_var = None
+                for v in vcf(gstr): 
                     # variant filtering
                     filt = v.FILTER
                     if filt != None: continue # None is PASS with cyvcf2
@@ -708,7 +739,11 @@ def count_mutations_from_vcfs(VCFs,names,genes,terms,tType,snps_only,blacklist=N
                     for a in v.ALT:
                         alt = a.encode('ascii')
                         var_info = '%d_%s_%s'%(pos,ref,alt)
-                    
+                        # check if duplicate
+                        if prior_var != None:
+                            if var_info == prior_var: continue
+                        prior_var = var_info
+                             
                         # check if black-listed site
                         if blacklist != None:
                             if chrom in blacklist:
@@ -802,7 +837,11 @@ def count_mutations_from_maf(MAF,genes,gene2index,terms,tType,snps_only,blacklis
     # Loop over lines in MAF file
     for line in open(MAF).readlines()[1:]: # skip header
         l = line.strip().split('\t')
-        gene,chrom,mstart,mstop,varclass,vartype,ref,alt,name = l[0],l[4],int(l[5]),int(l[6]),l[8],l[9],l[10],l[11],l[15]
+        try:
+            gene,chrom,mstart,mstop,varclass,vartype,ref,alt,name = l[0],l[4],int(l[5]),int(l[6]),l[8],l[9],l[10],l[11],l[15]
+        except:
+            print 'Could not parse line in MAF: %s'%(line)
+            sys.exit()
         if gene not in gene2index: continue
         if not chrom.startswith('chr'): chrom = 'chr'+chrom
         pos = mstart # use mutation start position
@@ -956,19 +995,25 @@ def get_local_background(genes,VCFs,names,terms,tType,snps_only,blacklist=None,f
                     
                     mut_count = 0 
                     for gstr in g_strings:
-                        for v in vcf(gstr):
+                        prior_var = None
+                        for v in vcf(gstr): 
                             # variant filtering
                             filt = v.FILTER
                             if filt != None: continue # None is PASS with cyvcf2 
                 
                             # Get variant info
                             for a in v.ALT:
+                                var_info = '%d_%s_%s'%(v.POS,v.REF.encode('ascii'),a.encode('ascii'))
                                 # check if black-listed site
                                 if blacklist != None:
                                     if g.chrom in blacklist:
-                                        var_info = '%d_%s_%s'%(v.POS,v.REF.encode('ASCII'),a.encode('ascii'))
                                         if var_info in blacklist[g.chrom]: continue
-                          
+                            
+                                # check if duplicate
+                                if prior_var != None:
+                                    if var_info == prior_var: continue
+                                prior_var = var_info
+                            
                                 if bg_vtype == 'all': mut_count += 1
                                 
                                 elif bg_vtype == 'silent':

@@ -116,17 +116,17 @@ def run(parser, args, version):
         parser.error("AP algorithm type must be one of either 'fast' or 'slow'.")
     
     # create log file for parameters
-    oflog = open(outdir + prefix[:-1] + '.params.log','w')
-    oflog.writelines('%s\t%s\n'%('Version',version))
-    oflog.writelines('%s\t%s\n'%('Regions.bed',vargs['regions']))
-    oflog.writelines('%s\t%s\n'%('VCFs',vargs['vcfs']))
-    if use_covars: oflog.writelines('background_type\tcovariate\n')
-    elif use_local: oflog.writelines('background_type\tlocal\n')
-    else: oflog.writelines('background_type\tglobal\n')
+    oflog = open(outdir + prefix[:-1] + '.log','w')
+    oflog.writelines('%s: %s\n'%('MutEnricher version',version))
+    oflog.writelines('%s: %s\n'%('Regions.bed',vargs['regions']))
+    oflog.writelines('%s: %s\n'%('VCFs',vargs['vcfs']))
+    if use_covars: oflog.writelines('background_type: covariate\n')
+    elif use_local: oflog.writelines('background_type: local\n')
+    else: oflog.writelines('background_type: global\n')
     for param in sorted(vargs.keys()):
         if param in ['regions','vcfs']: continue
-        oflog.writelines('%s\t%s\n'%(param,str(vargs[param])))
-    oflog.close() 
+        oflog.writelines('%s: %s\n'%(param,str(vargs[param])))
+    oflog.writelines('\n')
 
     # Timing
     time0_master = time.time()
@@ -150,7 +150,8 @@ def run(parser, args, version):
         rstr = r.region_string
         reg2index[rstr] = ind
     print 'Loaded %d regions from input BED file.'%(len(regions))
-    
+    oflog.writelines('Loaded %d regions from input BED file.\n'%(len(regions)))
+
     # Load blacklist if provided
     if bl_fn != None:
         print '\nLoading blacklist variants file...'
@@ -178,7 +179,15 @@ def run(parser, args, version):
                     l = line.strip().split('\t')
                     num,exemplar,members = l[0],l[1],l[2]
                     region_clusters[c].append([num,exemplar,members.split(';')])
-            
+        
+        # log cluster info
+        tot_r_from_covars, tot_clusters = 0, 0
+        for c in region_clusters:
+            for cl in region_clusters[c]:
+                tot_clusters += 1
+                tot_r_from_covars += len(cl[2])
+        oflog.writelines('Clustered %d regions with covariates into %d clusters.\n'%(tot_r_from_covars,tot_clusters))
+
         # Map to regions
         for contig in region_clusters:
             for clust in region_clusters[contig]:
@@ -242,6 +251,16 @@ def run(parser, args, version):
         for rr in rget: regions.append(rr)
     regions = sorted(regions,key=lambda x:x.index) # re-sort new regions by index
     print 'Done extracting mutations in VCF files (%0.2f min.).'%((time.time() - time0_mutc)/60)
+    
+    # Log mutations
+    total_muts, tot_r_with_mutation = 0, 0
+    for r in regions:
+        if r.num_mutations > 0:
+            total_muts += r.num_mutations
+            tot_r_with_mutation += 1
+    oflog.writelines('%d total somatic mutations identified in %d regions.\n'%(total_muts, tot_r_with_mutation))
+
+    # close and re-open pool
     pool.close()
     pool = mp.Pool(processes=nprocessors)
     
@@ -279,9 +298,14 @@ def run(parser, args, version):
     print '\n-----------------------CANDIDATE HOTSPOT FINDING-----------------------'
     print 'Finding candidate hotspots in regions...'
     time0_hs = time.time()
+    tot_r_with_hs, tot_hotspots = 0, 0
     for r in regions:
         if r.num_mutations < min_clust_vars: continue
         r.find_clusters(dist=max_hs_dist,min_clust_vars=min_clust_vars)
+        if len(r.clusters) > 0:
+            tot_r_with_hs += 1
+            tot_hotspots += len(r.clusters)
+    oflog.writelines('Identified %d candidate hotspots in %d regions for testing.\n'%(tot_hotspots, tot_r_with_hs))
     print 'Candidate hotspot regions obtained (%0.2f min.).'%((time.time()-time0_hs)/60)
    
     # Calculate region and hotspot enrichment p-values
@@ -376,10 +400,13 @@ def run(parser, args, version):
                 was_done = len(dones)
                 print '  %d of %d regions complete.'%(was_done,nreg)
         rget = [r.get() for r in res]
+        n_wap_tests = 0
         for r in rget:
             assert regions[r.index].index == r.index
             regions[r.index] = r
+            n_wap_tests += 1
         print '\nWAP analysis complete (%0.2f min.).'%((time.time() - time0_wap)/60)
+        oflog.writelines('Performed WAP analysis on %d regions with >= %d mutations.\n'%(n_wap_tests,min_clust_vars))
 
     # Compute Fisher combined p-values 
     print '\nCombining region and WAP p-values with Fisher method...'
@@ -402,6 +429,7 @@ def run(parser, args, version):
     for r in reg_enr:
         r_pvals.append(r.fisher_pval)
     r_fdrs = fdr_BH(np.array(r_pvals))
+    tot_r_output = 0
     for i,r in enumerate(reg_enr):
         r.fisher_qval = r_fdrs[i]
         bgp = r.background_prob
@@ -428,9 +456,11 @@ def run(parser, args, version):
                                                                                                    bg_type,bgp,rpv,w0,wap_pv,fish_pv,fdr,
                                                                                                    nsamps,pos_counts,mut_counts,sampstr)
         ofr.writelines(ol)
+        tot_r_output += 1
     ofr.close()
- 
-    # Write cluster enrichment output 
+    oflog.writelines('\n%d region enrichment results reported.\n'%(tot_r_output))
+
+    # Write hotspot enrichment output 
     print 'Writing hotspot enrichment analysis output...'
     of = open(outdir+prefix+'hotspot.txt','w')
     of.writelines('\t'.join(['Hotpsot','region','region_name','num_mutations','hotspot_length','effective_length',
@@ -439,12 +469,14 @@ def run(parser, args, version):
         ostr = '%s\t%s\t%s\t%d\t%d\t%d\t%s\t%0.3g\t%0.3g\t%0.3g\t%d\t%s\t%s\t%s\n'%(tuple(cr))
         of.writelines(ostr)
     of.close()
-    
+    oflog.writelines('%d region hotspot enrichment results reported.\n'%(len(cluster_enrichments)))
+
     # Save regions analysis as python pickle object
     cPickle.dump(regions,open(outdir+prefix+'region_data.pkl','w'))
 
-    # close pool
+    # close pool, log file
     pool.close()
+    oflog.close()
 
     # Finish statement
     print '\nAnalysis finished in %0.2f minutes.\n'%((time.time() - time0_master)/60)
@@ -512,7 +544,7 @@ def count_mutations_from_vcfs(VCFs,names,regions,snps_only,blacklist=None,mapr=N
                         var_info = '%d_%s_%s'%(pos,ref,alt)
                     
                         # Check for duplicate lines
-                        # strange examples with Strelka where same exact variant is reported >1 time
+                        # strange examples where same exact variant is reported >1 time
                         if name in r.mutations_by_sample:
                             if var_info in r.mutations_by_sample[name]: continue
 

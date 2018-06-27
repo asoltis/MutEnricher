@@ -74,7 +74,8 @@ def add_coding_parser(subparsers):
                         selected, only silent mutations count towards background.")
  
     coding_parser.add_argument('--maf',type=str,dest='maf',default=None,
-                        help='Instead of VCF list file, provide MAF (mutation annotation format) file with mutation information. Gene \
+                        help='Instead of VCF list file, provide MAF (mutation annotation format) file with mutation information. \
+                        To use, provide a dummy character (e.g. "-") for the VCFs argument and provide a MAF file with this option. Gene \
                         information (e.g. lengths) are computed from input GTF. Genes not present by genefield in GTF (read from first column \
                         of MAF) are skipped.')
     coding_parser.add_argument('--exome-only',action='store_true',dest='exome_only',
