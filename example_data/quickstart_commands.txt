@@ -3,31 +3,31 @@
 ###################
 
 ### Coding analysis run with default global background frequency method
-python ../mutEnricher.py coding annotation_files/ucsc.refFlat.20170829.no_chrMY.gtf vcf_files.txt --anno-type nonsilent_terms.txt -o test_out_coding --prefix test_global
+python ../mutEnricher.py coding annotation_files/ucsc.refFlat.20170829.no_chrMY.gtf.gz vcf_files.txt --anno-type nonsilent_terms.txt -o test_out_coding --prefix test_global
 
 ### Coding analysis run with local background frequency method (and parallelization)
-python ../mutEnricher.py coding annotation_files/ucsc.refFlat.20170829.no_chrMY.gtf vcf_files.txt --anno-type nonsilent_terms.txt -o test_out_coding --prefix test_local --use-local -p 5 
+python ../mutEnricher.py coding annotation_files/ucsc.refFlat.20170829.no_chrMY.gtf.gz vcf_files.txt --anno-type nonsilent_terms.txt -o test_out_coding --prefix test_local --use-local -p 5 
 
 ### Coding analysis run with pre-computed affinity propagation clusters
-python ../mutEnricher.py coding annotation_files/ucsc.refFlat.20170829.no_chrMY.gtf vcf_files.txt --precomputed-covars precomputed_apcluster/coding.ucsc.refFlat.20170829.no_chrMY/all_genes/apcluster_genes --anno-type nonsilent_terms.txt -o test_out_coding --prefix test_precompAP_all_genes -p 5
+python ../mutEnricher.py coding annotation_files/ucsc.refFlat.20170829.no_chrMY.gtf.gz vcf_files.txt --precomputed-covars precomputed_apcluster/coding.ucsc.refFlat.20170829.no_chrMY/all_genes/apcluster_genes --anno-type nonsilent_terms.txt -o test_out_coding --prefix test_precompAP_all_genes -p 5
 
 ### Coding analysis run using affinity propagation to calculate gene clusters (by contig) from gene covariates
-python ../mutEnricher.py coding annotation_files/ucsc.refFlat.20170829.no_chrMY.gtf vcf_files.txt -c covariates/ucsc.refFlat.20170829.no_chrMY.covariates.txt -w covariates/ucsc.refFlat.20170829.no_chrMY.covariate_weights.txt --by-contig --anno-type nonsilent_terms.txt -o test_out_coding --prefix test_APclust_byContig -p 10
+python ../mutEnricher.py coding annotation_files/ucsc.refFlat.20170829.no_chrMY.gtf.gz vcf_files.txt -c covariates/ucsc.refFlat.20170829.no_chrMY.covariates.txt -w covariates/ucsc.refFlat.20170829.no_chrMY.covariate_weights.txt --by-contig --anno-type nonsilent_terms.txt -o test_out_coding --prefix test_APclust_byContig -p 10
 
 #######################
 # Non-coding analysis #
 #######################
 
 ### Non-coding analysis basic run with default global background frequency method
-python ../mutEnricher.py noncoding annotation_files/ucsc.refFlat.20170829.promoters_up1kb_down200.no_chrMY.bed vcf_files.txt -o test_out_noncoding --prefix test_global -p 5
+python ../mutEnricher.py noncoding annotation_files/ucsc.refFlat.20170829.promoters_up2kb_downUTR.no_chrMY.bed vcf_files.txt -o test_out_noncoding --prefix test_global -p 5
 
 
 ### Non-coding analysis basic run with local background frequency method
-python ../mutEnricher.py noncoding annotation_files/ucsc.refFlat.20170829.promoters_up1kb_down200.no_chrMY.bed vcf_files.txt -o test_out_noncoding --use-local --prefix test_local -p 5
+python ../mutEnricher.py noncoding annotation_files/ucsc.refFlat.20170829.promoters_up2kb_downUTR.no_chrMY.bed vcf_files.txt -o test_out_noncoding --use-local --prefix test_local -p 5
 
 ### Non-coding analysis run with pre-computed affinity propagation clusters
-python ../mutEnricher.py noncoding annotation_files/ucsc.refFlat.20170829.promoters_up1kb_down200.no_chrMY.bed vcf_files.txt -o test_out_noncoding --precomputed-covars precomputed_apcluster/noncoding.ucsc.refFlat.20170829.promoters_up1kb_down200.no_chrMY/apcluster_regions --prefix test_precompAP -p 5
+python ../mutEnricher.py noncoding annotation_files/ucsc.refFlat.20170829.promoters_up2kb_downUTR.no_chrMY.bed vcf_files.txt -o test_out_noncoding --precomputed-covars precomputed_apcluster/noncoding.ucsc.refFlat.20170829.promoters_up2kb_downUTR.no_chrMY/apcluster_regions --prefix test_precompAP -p 5
 
 ### Non-coding analysis run using affinity propagation to calculate regional clusters from region covariates
-python ../mutEnricher.py noncoding annotation_files/ucsc.refFlat.20170829.promoters_up1kb_down200.no_chrMY.bed vcf_files.txt -o test_out_noncoding -c covariates/ucsc.refFlat.20170829.promoters_up1kb_down200.no_chrMY.covariates.txt -w covariates/ucsc.refFlat.20170829.promoters_up1kb_down200.no_chrMY.covariate_weights.txt --prefix test_APclust -p 10
+python ../mutEnricher.py noncoding annotation_files/ucsc.refFlat.20170829.promoters_up2kb_downUTR.no_chrMY.bed vcf_files.txt -o test_out_noncoding -c covariates/ucsc.refFlat.20170829.promoters_up2kb_downUTR.no_chrMY.covariates.txt -w covariates/ucsc.refFlat.20170829.promoters_up2kb_downUTR.no_chrMY.covariate_weights.txt --prefix test_APclust -p 10
 
