@@ -82,18 +82,18 @@ We include various example files for testing MutEnricher on synthetic somatic da
 
 Several quickstart commands are provided in example_data/quickstart_commands.txt file. A sample quickstart command for coding analysis:
 
-    cd example_data/annotation_files
-    gunzip ucsc.refFlat.20170829.no_chrMY.gtf.gz
-    cd ..
-    python ../mutEnricher.py coding annotation_files/ucsc.refFlat.20170829.no_chrMY.gtf vcf_files.txt --anno-type nonsilent_terms.txt -o test_out_coding --prefix test_global
+    cd example_data
+    python ../mutEnricher.py coding annotation_files/ucsc.refFlat.20170829.no_chrMY.gtf.gz vcf_files.txt --anno-type nonsilent_terms.txt -o test_out_coding --prefix test_global
 
 Files/folders contained in example_data:
     
     1. example_data/annotation_files
 
         Contains example GTF and BED files for running MutEnricher's coding and noncoding modules. 
-        1. ucsc.refFlat.20170829.no_chrMY.gtf.gz (NOTE: uncompress with gunzip prior to use)
+        1. ucsc.refFlat.20170829.no_chrMY.gtf.gz
         2. ucsc.refFlat.20170829.promoters_up2kb_downUTR.no_chrMY.bed
+
+        NOTE: Input GTF (coding analysis) and BED files (noncoding analysis) can be gzip compressed or not. 
 
     2. example_data/covariates
 
