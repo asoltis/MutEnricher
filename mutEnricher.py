@@ -54,7 +54,7 @@ def add_coding_parser(subparsers):
                     help="Perform somatic coding-gene analyses on non-silent mutations in genes.")
 
     coding_parser.add_argument('GTF',metavar='genes.gtf',type=str,
-                        help='Input GTF file (Required).')
+                        help='Input GTF file (Required). Can be provided as plain text or gzip-compressed file.')
     coding_parser.add_argument('vcfs',metavar='vcfs_list.txt',type=str,
                         help='Input VCFs list file (Required). Required columns: file path, sample name.\
                         NOTE: sample names must be unique for each sample!')
@@ -80,7 +80,7 @@ def add_coding_parser(subparsers):
                         help='Instead of VCF list file, provide MAF (mutation annotation format) file with mutation information. \
                         To use, provide a dummy character (e.g. "-") for the VCFs argument and provide a MAF file with this option. Gene \
                         information (e.g. lengths) are computed from input GTF. Genes not present by genefield in GTF (read from first column \
-                        of MAF) are skipped.')
+                        of MAF) are skipped. Input MAF can be provided as plain text of gzip-compressed file.')
     coding_parser.add_argument('--exome-only',action='store_true',dest='exome_only',
                         help='If using exome-based data, choose this flag to only consider exonic coordinates of genes for background estimates. \
                         Default behavior is to consider full gene length (exons + introns) in calculations.')
@@ -141,8 +141,8 @@ def add_noncoding_parser(subparsers):
                        help="Perform noncoding regional and hotspot somatic enrichment analysis.")  
     
     noncoding_parser.add_argument('regions',metavar='regions.bed',type=str,
-                        help='Input regions BED file (Required). Required columns: contig, 0-based start, 1-based end. A name for the region \
-                        can be supplied in the 4th column.')
+                        help='Input regions BED file (Required). Can be provided as plain text or gzip-compressed file. \
+                        Required columns: contig, 0-based start, 1-based end. A name for the region can be supplied in the 4th column.')
     noncoding_parser.add_argument('vcfs',metavar='vcfs_list.txt',type=str,
                         help='Input VCFs list file (Required). Required columns: file path, sample name.\
                         NOTE: sample names must be unique for each sample!')

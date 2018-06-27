@@ -14,6 +14,7 @@ from math_funcs import WAP
 from scipy.special import betainc
 from region_covariate_clustering import covariate_cluster as covc
 from pysam import TabixFile
+import gzip
 
 '''
 MutEnricher non-coding analysis module code.
@@ -495,7 +496,10 @@ def load_regions(regions_fn,mapr):
     '''
     regions = []
     if mapr != None: mapr = TabixFile(mapr)
-    for i,r in enumerate(open(regions_fn).readlines()): # testing
+    
+    if regions_fn.endswith('.gz'): FH = gzip.open(regions_fn,'rb')
+    else: FH = open(regions_fn)
+    for i,r in enumerate(FH): # testing
         region = Region(r,i,mapr)
         regions.append(region)
     return regions

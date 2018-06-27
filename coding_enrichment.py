@@ -12,6 +12,7 @@ from scipy.stats.mstats import gmean
 from scipy.special import betainc
 from gene_covariate_clustering import covariate_cluster as covc
 from pysam import TabixFile
+import gzip
 
 '''
 MutEnricher coding analysis module code.
@@ -190,7 +191,15 @@ def run(parser,args,version):
     
     if use_maf:
         print ' loading genes from MAF...'
-        genes_in_maf = set([x.strip().split('\t')[0] for x in open(MAF).readlines()[1:]]) # Unique genes in MAF
+        if MAF.endswith('.gz'):
+            FH = gzip.open(MAF,'rb')
+            genes_in_maf = set()
+            for ln,line in enumerate(FH):
+                if ln == 0: continue # skip header
+                g = line.strip().split('\t')[0]
+                genes_in_maf.add(g)
+        else:
+            genes_in_maf = set([x.strip().split('\t')[0] for x in open(MAF).readlines()[1:]]) # Unique genes in MAF
         genes_not_recognized,gnr_count = [],0
         if mapr != None: mappable = TabixFile(mapr)
         else: mappable = None
@@ -590,8 +599,11 @@ def load_gtf(gtf,genefield,gene_list,genes_to_use):
     '''
     genes = {}
     bad_genes = set() # list for problematic genes
-
-    for line in open(gtf).readlines():
+    
+    if gtf.endswith('.gz'): FH = gzip.open(gtf,'rb')
+    else: FH = open(gtf)
+    
+    for line in FH:
         if line.startswith('#'): continue # some GTFs have header lines
         l = line.strip().split('\t')
         chrom,typ,start,stop,strand,data = l[0],l[2],int(l[3]),int(l[4]),l[6],l[-1]
@@ -637,6 +649,7 @@ def load_gtf(gtf,genefield,gene_list,genes_to_use):
     for gene_id in genes:
         genes[gene_id]['exons'].sort()
         genes[gene_id]['CDS'].sort()
+    FH.close()
     return genes
 
 def merge_list(exlist):
@@ -833,9 +846,12 @@ def count_mutations_from_maf(MAF,genes,gene2index,terms,tType,snps_only,blacklis
 
     # new genes list
     new_genes = []
-
-    # Loop over lines in MAF file
-    for line in open(MAF).readlines()[1:]: # skip header
+    
+    # Loop over lines in MAF file 
+    if MAF.endswith('.gz'): FH = gzip.open(MAF,'rb')
+    else: FH = open(MAF)
+    for ln,line in enumerate(FH):
+        if ln == 0: continue # Skip header line
         l = line.strip().split('\t')
         try:
             gene,chrom,mstart,mstop,varclass,vartype,ref,alt,name = l[0],l[4],int(l[5]),int(l[6]),l[8],l[9],l[10],l[11],l[15]
