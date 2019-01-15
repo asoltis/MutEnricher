@@ -25,12 +25,16 @@ The main driver script is mutEnricher.py and each tool can be evoked from here, 
 
 See help pages and associated documentation for methodological and run details. 
 
-User guides:
---------------
+Wiki and User guides:
+---------------------
 
-Quickstart guide: [Link](https://github.com/asoltis/MutEnricher/blob/master/doc/MutEnricher_quickstart_06262018.pdf)
+Wiki: [Link](https://github.com/asoltis/MutEnricher/wiki)
 
-Tutorial: [Link](https://github.com/asoltis/MutEnricher/blob/master/doc/MutEnricher_tutorial_06262018.pdf)
+Quickstart guide: [Link](https://github.com/asoltis/MutEnricher/wiki/Quickstart-guide)
+
+Tutorial: [Link](https://github.com/asoltis/MutEnricher/wiki/Tutorial)
+
+Output file descriptions: [Link](https://github.com/asoltis/MutEnricher/wiki/Output-file-descriptions)
 
 Installation:
 ---------------
