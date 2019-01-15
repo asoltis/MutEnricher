@@ -28,49 +28,18 @@ See help pages and associated documentation for methodological and run details.
 Wiki and User guides:
 ---------------------
 
-Wiki: [Link](https://github.com/asoltis/MutEnricher/wiki)
+[Wiki](https://github.com/asoltis/MutEnricher/wiki)
 
-Quickstart guide: [Link](https://github.com/asoltis/MutEnricher/wiki/Quickstart-guide)
+[Quickstart guide](https://github.com/asoltis/MutEnricher/wiki/Quickstart-guide)
 
-Tutorial: [Link](https://github.com/asoltis/MutEnricher/wiki/Tutorial)
+[Tutorial](https://github.com/asoltis/MutEnricher/wiki/Tutorial)
 
-Output file descriptions: [Link](https://github.com/asoltis/MutEnricher/wiki/Output-file-descriptions)
+[Output file descriptions](https://github.com/asoltis/MutEnricher/wiki/Output-file-descriptions)
 
 Installation:
 ---------------
 
-1. Python packages
-
-    MutEnricher has been tested with various Python 2.7.x versions. 
-    Beyond the standard Python libraries, MutEnricher requires:
-
-        1. NumPy
-        2. SciPy
-        3. Cython
-        4. cyvcf2
-        5. pysam
-
-    These modules are readily available through the Python package manager pip. If pip is not already installed on your system, 
-    see https://pip.pypa.io/en/stable/installing/ for instructions on how to obtain it. Alternatively, each module can be manually 
-    downloaded and installed on your system.
-
-2. Cythonize helper math functions
-
-    MutEnricher calls several custom mathematical functions that need to be "cythonized" prior to use. To do this:
-
-        1. From the main install directory (i.e. this directory), cd into the math_funcs sub-directory
-        2. Run the following command: 
-            python setup.py build_ext --inplace
-
-    NOTE: The python alias should point to the executable in the install bin directory, e.g. /path/to/python/bin/python. 
-    
-    Successful completion of the above steps will generate math_funcs.so, which is used by MutEnricher. 
-
----
-You can test the install by executing the help commands for the various tools, e.g.:
-    python mutEnricher.py -h
-    python mutEnricher.py coding -h
-    python mutEnricher.py noncoding -h
+See [Requirements and Installation](https://github.com/asoltis/MutEnricher/wiki#requirements-and-installation) section on Wiki.
 
 Additional utilities
 ----------------------
