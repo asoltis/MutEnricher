@@ -7,7 +7,7 @@ Institution: Uniformed Services University of the Health Sciences, Bethesda, MD
 
 License: MIT License, see [License](https://github.com/asoltis/MutEnricher/blob/master/LICENSE.txt)
 
-Version: 1.0.0
+Version: 1.1.1
 
 Introduction:
 ---------------
@@ -153,6 +153,16 @@ Files/folders contained in example_data:
 
 # Change log #
 ---------------
+
+01-15-2018
+----------
+- Version 1.1.1
+- Updates/bug fixes:
+    - Coding analysis code now produces output file with combined Fisher p-value for overall gene and hotspot(s) enrichments.
+    - Updated method used to compute Fisher p-values for better numerical accuracy.
+    - utilities/get_gene_covariates.py updated to read gzipped GTF files.
+    - Fixed minor bug in coding analysis code associated with local background rate calculation method.
+    - Updated coding analysis code to calculate gene background mutation rate from samples possessing at least one non-silent mutation.
 
 06-15-2018 
 -----------

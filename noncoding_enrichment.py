@@ -9,7 +9,8 @@ import time
 from collections import Counter
 import random
 from scipy.stats.mstats import gmean
-from scipy.stats import chi2 as chi2
+#from scipy.stats import chi2 as chi2
+from scipy.stats import combine_pvalues as CPVAL
 from math_funcs import WAP
 from scipy.special import betainc
 from region_covariate_clustering import covariate_cluster as covc
@@ -1068,9 +1069,11 @@ class Region:
     
     def compute_fisher(self):
         ''' Combine region and WAP p-values with Fisher's method.'''
+        minFisher = 2.2250738585072014e-308 
         pvals = [self.region_pval, self.WAP_pval]
-        fpv = fishers_method(pvals)
-        self.fisher_pval = fpv
+        chi_stat, fpv = CPVAL(pvals, method = 'fisher')
+        if fpv < minFisher: self.fisher_pval = minFisher
+        else: self.fisher_pval = fpv
 
 ##################
 # Math functions #
@@ -1110,17 +1113,6 @@ def hotspot_wap_pval(region,tau=6,theta=0.25,nperm=1000000):
     region.WAP = w0
     region.WAP_pval = pv
     return region
-
-def fishers_method(pvals):
-    '''
-    Fisher's combined p-value method applied to list of p-values.
-    '''
-    for i,p in enumerate(pvals):
-        if p == 0: pvals[i] = 1e-322 #pseudo
-    chi = -2 * sum([np.log(x) for x in pvals])
-    pv = 1-chi2.cdf(x=chi,df=2*len(pvals)) # df = 2 x num p-values
-   
-    return pv
 
 def fdr_BH(pvals):
     '''

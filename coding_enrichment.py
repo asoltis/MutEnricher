@@ -9,6 +9,7 @@ import time
 from collections import Counter
 import random
 from scipy.stats.mstats import gmean
+from scipy.stats import combine_pvalues as CPVAL
 from scipy.special import betainc
 from gene_covariate_clustering import covariate_cluster as covc
 from pysam import TabixFile
@@ -405,11 +406,12 @@ def run(parser,args,version):
         for s in global_bg_rates:
             if global_bg_rates[s] == 0: global_bg_rates[s] = minBG
         for g in genes: 
-            if g.total_mutations == 0: continue
+            #if g.total_mutations == 0: continue
+            if g.total_nonsilent_mutations == 0: continue
             get_cluster_bg_rates(g,genes,scr,global_bg_rates,bg_vtype) 
     elif use_local:
         print 'Calculating local gene background rates...'
-        chunk_size = 100
+        chunk_size = 100 
         genes_for_local = [g for g in genes if g.total_nonsilent_mutations>0]        
         num_chunks = int(ceil(len(genes_for_local)/chunk_size))
         chunks = []
@@ -576,6 +578,71 @@ def run(parser,args,version):
     of.close()
     oflog.writelines('%d gene hotspot enrichment results reported.\n'%(len(cluster_enrichments)))
 
+    # Create combined gene and hotspot output
+    print '\nCreating combined gene and hotspot enrichment output...'
+    # compute Fisher p-values
+    minFisher = 2.2250738585072014e-308
+    for g in genes:
+        CR = g.cluster_enrichments
+        if len(CR) == 0:
+            g.fisher_pval = g.gene_pval
+        else:
+            pvals = [g.gene_pval]
+            for cr in CR:
+                pvals.append(cr[7]) # append cluster p-value
+            gchi, fpv = CPVAL(pvals, method='fisher')
+            if fpv < minFisher: g.fisher_pval = minFisher
+            else: g.fisher_pval = fpv
+    # calculate Fisher p-value FDRs
+    g_f_pvals = []
+    g_f_enr = [g for g in genes if g.total_nonsilent_mutations>0]
+    g_f_enr.sort(key=lambda x:x.fisher_pval)
+    for g in g_f_enr:
+        g_f_pvals.append(g.fisher_pval)
+    g_f_fdrs = fdr_BH(array(g_f_pvals))
+    # write output
+    ofF = open(outdir+prefix+'gene_hotspot_Fisher_enrichments.txt','w') 
+    ofF.writelines('\t'.join(['Gene','coordinates','num_nonsilent','num_bg','full_length','coding_length','bg_type','bg_prob',
+                              'gene_pval','hotspot_pvals','Fisher_pval','Fisher_FDR',
+                              'num_samples','nonsilent_position_counts','nonsilent_mutation_counts','samples'])+'\n')
+    for i,g in enumerate(g_f_enr):
+        g.fisher_qval = g_f_fdrs[i]
+        
+        coords = '%s:%d-%d'%(g.chrom,g.start,g.stop)
+        gname,nnon,nbg,tot_len,code_len = g.name,g.total_nonsilent_mutations,g.total_bg_mutations,g.total_length,g.coding_length
+        bg_type = g.enrichment_bg_type
+        bgp = g.background_prob
+        if bgp == None: bgp = -1
+        gpv, fpv, ffdr = g.gene_pval, g.fisher_pval, g.fisher_qval
+        CR = g.cluster_enrichments
+        if len(CR) > 0:
+            hs_pvs = []
+            for cr in CR: hs_pvs.append(cr[7])
+            hs_pvs = ';'.join(['%0.2g'%(x) for x in hs_pvs])
+        else: hs_pvs = 'NA'
+        samples = []
+        for s in g.mutations_by_sample:
+            if len(g.mutations_by_sample[s]['nonsilent'])>0: samples.append(s)
+        nsamps,sampstr = len(samples),';'.join(sorted(samples))
+        pos_counter = Counter(g.positions['nonsilent'])
+        pos_counts = []
+        for pos in sorted(pos_counter.keys()):
+            pos_counts.append('%d_%d'%(pos,pos_counter[pos]))
+        pos_counts = ';'.join(pos_counts)
+        mut_counts = []
+        for mut in sorted(g.samples_by_mutations['nonsilent'].keys()):
+            count = len(g.samples_by_mutations['nonsilent'][mut])
+            mut_counts.append('%s_%d'%(mut,count))
+        mut_counts = ';'.join(mut_counts)
+ 
+        ol = '%s\t%s\t%d\t%d\t%d\t%d\t%s\t%0.3g\t%0.3g\t%s\t%0.3g\t%0.3g\t%d\t%s\t%s\t%s\n'%(gname,coords,nnon,nbg,
+                                                                                             tot_len,code_len,bg_type,bgp,
+                                                                                             gpv,hs_pvs,fpv,ffdr,
+                                                                                             nsamps,pos_counts,mut_counts,sampstr) 
+        
+        ofF.writelines(ol)
+    ofF.close()
+    
     # Save genes analysis as python pickle object
     cPickle.dump(genes,open(outdir+prefix+'gene_data.pkl','w'))
 
@@ -959,8 +1026,9 @@ def get_local_background(genes,VCFs,names,terms,tType,snps_only,blacklist=None,f
         vcf = VCF(vcf_f,gts012=True,lazy=False)
         name = names[j]
         
-        use_local_finder = False
+        #use_local_finder = False
         for g in genes:
+            use_local_finder = False
             if for_covar: use_local_finder = True
             if use_local_finder == False:
                 if name not in g.mutations_by_sample: continue
@@ -1122,6 +1190,8 @@ def get_cluster_bg_rates(g,genes,scr,global_bg,bg_vtype):
         gmems = [genes[i] for i in members]
         bgf_rates = get_global_bg_rates(gmems,csf,bg_vtype)
         for s in csf: 
+            nmut = len(g.mutations_by_sample[s]['nonsilent'])
+            if nmut == 0: continue # take only samples with at least one non-silent mutation
             if bgf_rates[s] == 0: 
                 bg_of_s = global_bg[s] # use global rate for zero cases
             else: bg_of_s = bgf_rates[s]
@@ -1139,7 +1209,10 @@ def get_gene_enrichments_global_bg(g,bg_rates,ns):
     kf = g.total_nonsilent_mutations #- 1
     bg = []
     samples = g.mutations_by_sample.keys()
-    for s in samples: bg.append(bg_rates[s])
+    for s in samples: 
+        if s not in g.mutations_by_sample: continue
+        if len(g.mutations_by_sample[s]['nonsilent']) == 0: continue # take only samples with at least one non-silent mutation
+        bg.append(bg_rates[s])
     bg = gmean(bg) # take geometric mean
     
     # Calculate full region p-value
@@ -1162,7 +1235,10 @@ def get_gene_enrichments_local_bg(g,ns):
     kf = g.total_nonsilent_mutations #- 1
     bg = []
     samples = g.local_backgrounds.keys()
-    for s in samples: bg.append(g.local_backgrounds[s]['bg_rate'])
+    for s in samples: 
+        if s not in g.mutations_by_sample: continue
+        if len(g.mutations_by_sample[s]['nonsilent']) == 0: continue # take only samples with at least one non-silent mutation
+        bg.append(g.local_backgrounds[s]['bg_rate'])
     bg = gmean(bg) # take geometric mean
     
     # Calculate full region p-value
@@ -1484,6 +1560,8 @@ class Gene:
         # stats
         self.gene_pval = 1
         self.gene_qval = 1
+        self.fisher_pval = 1
+        self.fisher_qval = 1
         self.background_prob = None
         self.enrichment_bg_type = None
  

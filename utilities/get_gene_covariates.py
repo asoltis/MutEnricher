@@ -5,6 +5,7 @@ import argparse
 import multiprocessing as mp
 from pysam import FastaFile, TabixFile
 from math import ceil
+import gzip
 
 ########
 # MAIN #
@@ -175,7 +176,10 @@ def load_gtf(gtf,genefield,gene_list,genes_to_use):
     genes = {}
     bad_genes = set() # list for problematic genes
 
-    for line in open(gtf).readlines():
+    if gtf.endswith('.gz'): FH = gzip.open(gtf, 'rb')
+    else: FH = open(gtf)
+
+    for line in FH:
         if line.startswith('#'): continue # some GTFs have header lines
         l = line.strip().split('\t')
         chrom,typ,start,stop,strand,data = l[0],l[2],int(l[3]),int(l[4]),l[6],l[-1]
