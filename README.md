@@ -25,7 +25,7 @@ The main driver script is mutEnricher.py and each tool can be evoked from here, 
 
 See help pages and associated documentation for methodological and run details. 
 
-Wiki and User guides:
+Info and User Guides:
 ---------------------
 
 [Wiki](https://github.com/asoltis/MutEnricher/wiki)
@@ -120,15 +120,11 @@ Files/folders contained in example_data:
     are included, two coding and one non-coding, whereby non-silent mutations were inserted into the TP53 and KRAS genes and somatic
     mutations were inserted into the TERT gene promoter region. 
 
-8. doc
-
-    Tutorial and quick start documentation are included is this sub-directory. 
-
 # Change log #
 ---------------
 
-01-15-2018
-----------
+01-15-2019
+-----------
 - Version 1.1.1
 - Updates/bug fixes:
     - Coding analysis code now produces output file with combined Fisher p-value for overall gene and hotspot(s) enrichments.
