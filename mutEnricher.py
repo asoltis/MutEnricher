@@ -21,7 +21,7 @@ def main():
     usage = 'python %(prog)s'
     description = 'Perform somatic coding or non-coding analysis on sets of somatic mutation calls.'
     epilog = 'For command line options of sub-commands, type: %(prog)s COMMAND -h'
-    version = "1.1.1"
+    version = "1.1.2"
 
     # set up parser and sub-parsers
     parser = argparse.ArgumentParser(usage=usage,description=description,epilog=epilog,formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -120,8 +120,10 @@ def add_coding_parser(subparsers):
                         help='Provide path to pre-computed covariate clusters for regions in input BED file.')
     coding_parser.add_argument('-d','--hotspot-distance',type=int,default=50,dest='max_hs_dist',
                         help='Set maximum distance between mutations for candidate hotspot discovery.')
-    coding_parser.add_argument('--min-hs-vars',type=int,default=3,dest='min_clust_vars',
+    coding_parser.add_argument('--min-hs-vars',type=int,default=3,dest='min_hs_vars',
                         help='Set minimum number of mutations that must be present for a valid candidate hotspot.')
+    coding_parser.add_argument('--min-hs-samps',type=int,default=2,dest='min_hs_samps',
+                        help='Set minimum number of samples that must contain mutations to inform a valid candidate hotspot.')
     coding_parser.add_argument('--blacklist',type=str,default=None,dest='blacklist_fn',
                         help='Provide a blacklist of specific variants to exclude from analysis. Blacklist file format is tab-delimited\
                         text file with four required columns: contig (chromosome), position (1-indexed), reference base, alternate base.')
@@ -176,8 +178,10 @@ def add_noncoding_parser(subparsers):
                         help='Provide path to pre-computed covariate clusters for regions in input BED file.')
     noncoding_parser.add_argument('-d','--hotspot-distance',type=int,default=50,dest='max_hs_dist',
                         help='Set maximum distance between mutations for candidate hotspot discovery.')
-    noncoding_parser.add_argument('--min-hs-vars',type=int,default=3,dest='min_clust_vars',
+    noncoding_parser.add_argument('--min-hs-vars',type=int,default=3,dest='min_hs_vars',
                         help='Set minimum number of mutations that must be present for a valid candidate hotspot.')
+    noncoding_parser.add_argument('--min-hs-samps',type=int,default=2,dest='min_hs_samps',
+                        help='Set minimum number of samples that must contain mutations to inform a valid candidate hotspot.')
     noncoding_parser.add_argument('--blacklist',type=str,default=None,dest='blacklist_fn',
                         help='Provide a blacklist of specific variants to exclude from analysis. Blacklist file format is tab-delimited\
                         text file with four required columns: contig (chromosome), position (1-indexed), reference base, alternate base.')

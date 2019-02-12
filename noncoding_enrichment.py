@@ -103,7 +103,8 @@ def run(parser, args, version):
         use_local = True
     # hotspot options
     max_hs_dist = vargs['max_hs_dist']
-    min_clust_vars = vargs['min_clust_vars']
+    min_clust_vars = vargs['min_hs_vars']
+    min_clust_samps = vargs['min_hs_samps']
     no_wap = vargs['no_wap']
     # blacklist
     bl_fn = vargs['blacklist_fn']
@@ -984,7 +985,7 @@ class Region:
         self.covariate_clusters = [] # Initialize as empty list for values
         self.local_backgrounds = {}
     
-    def find_clusters(self,dist=50,min_clust_vars=3):
+    def find_clusters(self,dist=50,min_clust_vars=3,min_clust_samps=2):
         '''
         Find candidate mutation clusters by merging mutations within 'dist' of each other.
         '''
@@ -1014,7 +1015,7 @@ class Region:
                 for s in self.samples_by_positions[next_p]: c_samples.add(s)
             
                 # Case of overlap at last index - write out if of appropriate size
-                if i == num_pos-2 and counts >= min_clust_vars:
+                if i == num_pos-2 and counts >= min_clust_vars and len(c_samples) >= min_clust_samps:
                     self.clusters[clust_num] = {}
                     self.clusters[clust_num]['positions'] = cluster
                     self.clusters[clust_num]['count'] = counts
@@ -1025,7 +1026,7 @@ class Region:
             # If not true, write out appropriate clusters
             else: 
                 # Write out cluster if of appropriate size
-                if i < (num_pos - 2) and counts >= min_clust_vars:
+                if i < (num_pos - 2) and counts >= min_clust_vars and len(c_samples) >= min_clust_samps:
                     self.clusters[clust_num] = {}
                     self.clusters[clust_num]['positions'] = cluster
                     self.clusters[clust_num]['count'] = counts
@@ -1041,7 +1042,7 @@ class Region:
                     counts = 1
 
                 # In case at last position
-                elif i == num_pos-2 and counts >= min_clust_vars:
+                elif i == num_pos-2 and counts >= min_clust_vars and len(c_samples) >= min_clust_samps:
                     self.clusters[clust_num] = {}
                     self.clusters[clust_num]['positions'] = cluster
                     self.clusters[clust_num]['count'] = counts

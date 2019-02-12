@@ -7,7 +7,7 @@ Institution: Uniformed Services University of the Health Sciences, Bethesda, MD
 
 License: MIT License, see [License](https://github.com/asoltis/MutEnricher/blob/master/LICENSE.txt)
 
-Version: 1.1.1
+Version: 1.1.2
 
 Introduction:
 ---------------
@@ -122,6 +122,14 @@ Files/folders contained in example_data:
 
 # Change log #
 ---------------
+
+02-12-2019
+----------
+- Version 1.1.2
+- Updates:
+    - In both coding and noncoding modules, new option --min-hs-samps included for setting minimum number of samples that must contain 
+      mutations in a candidate hotspot region for subsequent testing. Default is set to 2; setting to 1 is equivalent to prior default 
+      behavior. 
 
 01-15-2019
 -----------

@@ -144,7 +144,8 @@ def run(parser,args,version):
         use_local = False
     # hotspot options
     max_hs_dist = vargs['max_hs_dist']
-    min_clust_vars = vargs['min_clust_vars']
+    min_clust_vars = vargs['min_hs_vars']
+    min_clust_samps = vargs['min_hs_samps']
     # blacklist
     bl_fn = vargs['blacklist_fn']
     if bl_fn != None:
@@ -444,7 +445,7 @@ def run(parser,args,version):
     tot_g_with_hs, tot_hotspots = 0, 0
     for g in genes:
         if g.total_nonsilent_mutations < min_clust_vars: continue
-        g.find_hotspots(dist=max_hs_dist,min_clust_vars=min_clust_vars)
+        g.find_hotspots(dist=max_hs_dist,min_clust_vars=min_clust_vars,min_clust_samps=min_clust_samps)
         if len(g.clusters) > 0:
             tot_g_with_hs += 1
             tot_hotspots += len(g.clusters)
@@ -1565,7 +1566,7 @@ class Gene:
         self.background_prob = None
         self.enrichment_bg_type = None
  
-    def find_hotspots(self,dist=50,min_clust_vars=3):
+    def find_hotspots(self,dist=50,min_clust_vars=3,min_clust_samps=2):
         '''
         Find candidate non-silent mutation hotspots by merging mutations within 'dist' of each other.
         '''
@@ -1594,7 +1595,7 @@ class Gene:
                 for s in self.samples_by_positions['nonsilent'][next_p]: c_samples.add(s)
             
                 # Case of overlap at last index - write out if of appropriate size
-                if i == num_pos-2 and counts >= min_clust_vars:
+                if i == num_pos-2 and counts >= min_clust_vars and len(c_samples) >= min_clust_samps:
                     self.clusters[clust_num] = {}
                     self.clusters[clust_num]['positions'] = cluster
                     self.clusters[clust_num]['count'] = counts
@@ -1605,7 +1606,7 @@ class Gene:
             # If not true, write out appropriate clusters
             else: 
                 # Write out cluster if of appropriate size
-                if i < (num_pos - 2) and counts >= min_clust_vars:
+                if i < (num_pos - 2) and counts >= min_clust_vars and len(c_samples) >= min_clust_samps:
                     self.clusters[clust_num] = {}
                     self.clusters[clust_num]['positions'] = cluster
                     self.clusters[clust_num]['count'] = counts
@@ -1621,7 +1622,7 @@ class Gene:
                     counts = 1
 
                 # In case at last position
-                elif i == num_pos-2 and counts >= min_clust_vars:
+                elif i == num_pos-2 and counts >= min_clust_vars and len(c_samples) >= min_clust_samps:
                     self.clusters[clust_num] = {}
                     self.clusters[clust_num]['positions'] = cluster
                     self.clusters[clust_num]['count'] = counts
