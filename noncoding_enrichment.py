@@ -304,7 +304,7 @@ def run(parser, args, version):
     tot_r_with_hs, tot_hotspots = 0, 0
     for r in regions:
         if r.num_mutations < min_clust_vars: continue
-        r.find_clusters(dist=max_hs_dist,min_clust_vars=min_clust_vars)
+        r.find_clusters(dist=max_hs_dist,min_clust_vars=min_clust_vars,min_clust_samps=min_clust_samps)
         if len(r.clusters) > 0:
             tot_r_with_hs += 1
             tot_hotspots += len(r.clusters)
