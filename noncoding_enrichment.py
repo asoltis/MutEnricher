@@ -418,8 +418,8 @@ def run(parser, args, version):
         elif r.WAP_pval == None: 
             r.WAP = np.nan
             r.WAP_pval = np.nan
-            r.fisher_pval = r.region_pval
-        else: r.compute_fisher()
+            r.fisher_rw_pval = r.region_pval
+        else: r.compute_rw_fisher()
 
     # Write region enrichment output
     print '\nCorrecting p-values and writing regional and WAP enrichment analyses output...'
@@ -428,19 +428,19 @@ def run(parser, args, version):
                               'WAP','WAP_pval','Fisher_pval','FDR_BH','num_samples','position_counts','mutation_counts','samples'])+'\n')
     r_pvals = []
     reg_enr = [r for r in regions if r.num_mutations>0]
-    reg_enr.sort(key=lambda x:x.fisher_pval)
+    reg_enr.sort(key=lambda x:x.fisher_rw_pval)
     for r in reg_enr:
-        r_pvals.append(r.fisher_pval)
+        r_pvals.append(r.fisher_rw_pval)
     r_fdrs = fdr_BH(np.array(r_pvals))
     tot_r_output = 0
     for i,r in enumerate(reg_enr):
-        r.fisher_qval = r_fdrs[i]
+        r.fisher_rw_qval = r_fdrs[i]
         bgp = r.background_prob
         if bgp == None: bgp = -1
         
         rs,name,num,rlen,eff_len,bg_type,bgp = r.region_string,r.name,r.num_mutations,r.length,r.length*ns,r.enrichment_bg_type,r.background_prob
         rpv = r.region_pval
-        w0,wap_pv,fish_pv,fdr = r.WAP,r.WAP_pval,r.fisher_pval,r.fisher_qval
+        w0,wap_pv,fish_pv,fdr = r.WAP,r.WAP_pval,r.fisher_rw_pval,r.fisher_rw_qval
         samples = r.mutations_by_sample.keys()
         nsamps,sampstr = len(samples),';'.join(sorted(samples))
         pos_counter = Counter(r.positions)
@@ -467,13 +467,78 @@ def run(parser, args, version):
     print 'Writing hotspot enrichment analysis output...'
     of = open(outdir+prefix+'hotspot.txt','w')
     of.writelines('\t'.join(['Hotpsot','region','region_name','num_mutations','hotspot_length','effective_length',
-                             'bg_type','bg_prob','pval','BH_qval','num_samples','position_counts','mutation_counts','samples'])+'\n')
+                             'bg_type','bg_prob','pval','FDR_BH','num_samples','position_counts','mutation_counts','samples'])+'\n')
     for i,cr in enumerate(cluster_enrichments):
         ostr = '%s\t%s\t%s\t%d\t%d\t%d\t%s\t%0.3g\t%0.3g\t%0.3g\t%d\t%s\t%s\t%s\n'%(tuple(cr))
         of.writelines(ostr)
     of.close()
     oflog.writelines('%d region hotspot enrichment results reported.\n'%(len(cluster_enrichments)))
 
+    # Create combined region, WAP, and hotspot output
+    print '\nCreating combined region, WAP, and hotspot enrichment output...'
+    # compute Fisher p-values
+    minFisher = 2.2250738585072014e-308
+    for r in regions:
+        CR = r.cluster_enrichments
+        if len(CR) == 0:
+            r.fisher_rwh_pval = r.fisher_rw_pval
+        else:
+            pvals = [r.region_pval]
+            for cr in CR:
+                pvals.append(cr[8]) # append cluster p-value
+            gchi, fpv = CPVAL(pvals, method='fisher')
+            if fpv < minFisher: r.fisher_rwh_pval = minFisher
+            else: r.fisher_rwh_pval = fpv
+    # calculate Fisher p-value FDRs
+    r_f_pvals = []
+    r_f_enr = [r for r in regions if r.num_mutations>0]
+    r_f_enr.sort(key=lambda x:x.fisher_rwh_pval)
+    for r in r_f_enr:
+        r_f_pvals.append(r.fisher_rwh_pval)
+    r_f_fdrs = fdr_BH(np.array(r_f_pvals))
+    # write output
+    ofF = open(outdir+prefix+'region_WAP_hotspot_Fisher_enrichments.txt','w')  
+    ofF.writelines('\t'.join(['Region','region_name','num_mutations','length','effective_length','bg_type','bg_prob','region_pval',
+                              'WAP','WAP_pval','hotspot_pvals','Fisher_pval','Fisher_FDR',
+                              'num_samples','position_counts','mutation_counts','samples'])+'\n')
+    
+    for i,r in enumerate(r_f_enr):
+        r.fisher_rwh_qval = r_f_fdrs[i]
+       
+        bgp = r.background_prob
+        if bgp == None: bgp = -1
+        
+        rs,name,num,rlen,eff_len,bg_type,bgp = r.region_string,r.name,r.num_mutations,r.length,r.length*ns,r.enrichment_bg_type,r.background_prob
+        rpv = r.region_pval
+        w0,wap_pv,fish_pv,fdr = r.WAP,r.WAP_pval,r.fisher_rwh_pval,r.fisher_rwh_qval
+        samples = r.mutations_by_sample.keys()
+        nsamps,sampstr = len(samples),';'.join(sorted(samples))
+        pos_counter = Counter(r.positions)
+        pos_counts = []
+        for pos in sorted(pos_counter.keys()):
+            pos_counts.append('%d_%d'%(pos,pos_counter[pos]))
+        pos_counts = ';'.join(pos_counts)
+        mut_counts = []
+        for mut in sorted(r.samples_by_mutations.keys()):
+            count = len(r.samples_by_mutations[mut])
+            mut_counts.append('%s_%d'%(mut,count)) 
+        mut_counts = ';'.join(mut_counts)
+
+        CR = r.cluster_enrichments
+        if len(CR) > 0:
+            hs_pvs = []
+            for cr in CR: hs_pvs.append(cr[8])
+            hs_pvs = ';'.join(['%0.2g'%(x) for x in hs_pvs])
+        else: hs_pvs = 'NA'
+
+        # write output line 
+        ol = '%s\t%s\t%d\t%d\t%d\t%s\t%0.2g\t%0.3g\t%0.2g\t%0.3g\t%s\t%0.3g\t%0.3g\t%d\t%s\t%s\t%s\n'%(rs,name,num,rlen,eff_len,bg_type,bgp,
+                                                                                                       rpv,w0,wap_pv,hs_pvs,fish_pv,fdr,
+                                                                                                       nsamps,pos_counts,mut_counts,sampstr)
+        
+        ofF.writelines(ol)
+    ofF.close()
+    
     # Save regions analysis as python pickle object
     cPickle.dump(regions,open(outdir+prefix+'region_data.pkl','w'))
 
@@ -973,8 +1038,10 @@ class Region:
         self.enrichment_bg_type = None 
         self.WAP = None
         self.WAP_pval = None
-        self.fisher_pval = 1
-        self.fisher_qval = 1
+        self.fisher_rw_pval = 1 # Fisher combined region + WAP
+        self.fisher_rw_qval = 1
+        self.fisher_rwh_pval = 1 # Fisher combined region + WAP + hotspot
+        self.fisher_rwh_qval = 1
         self.clusters = {} # Set up dictionary for clusters 
         self.cluster_enrichments = [] # List of cluster enrichment outputs for region
         self.mutations_by_sample = {} # Dictionary of samples and the mutations from them
@@ -1068,13 +1135,13 @@ class Region:
                     for s in self.samples_by_positions[next_p]: c_samples.add(s)
                     counts = 1
     
-    def compute_fisher(self):
+    def compute_rw_fisher(self):
         ''' Combine region and WAP p-values with Fisher's method.'''
         minFisher = 2.2250738585072014e-308 
         pvals = [self.region_pval, self.WAP_pval]
         chi_stat, fpv = CPVAL(pvals, method = 'fisher')
-        if fpv < minFisher: self.fisher_pval = minFisher
-        else: self.fisher_pval = fpv
+        if fpv < minFisher: self.fisher_rw_pval = minFisher
+        else: self.fisher_rw_pval = fpv
 
 ##################
 # Math functions #

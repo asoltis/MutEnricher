@@ -572,7 +572,7 @@ def run(parser,args,version):
     print 'Writing hotspot enrichment analysis output...'
     of = open(outdir+prefix+'hotspot.txt','w')
     of.writelines('\t'.join(['Gene','hotpsot','num_mutations','hotspot_length','effective_length',
-                             'bg_type','bg_prob','pval','BH_qval','num_samples','position_counts','mutation_counts','samples'])+'\n')
+                             'bg_type','bg_prob','pval','FDR_BH','num_samples','position_counts','mutation_counts','samples'])+'\n')
     for i,cr in enumerate(cluster_enrichments):
         ostr = '%s\t%s\t%d\t%d\t%d\t%s\t%0.3g\t%0.3g\t%0.3g\t%d\t%s\t%s\t%s\n'%(tuple(cr))
         of.writelines(ostr)

@@ -123,6 +123,13 @@ Files/folders contained in example_data:
 # Change log #
 ---------------
 
+03-25-2019
+----------
+- Version 1.1.3
+- Updates:
+    - Noncoding code now produces <prefix>_region_WAP_hotspot_Fisher_enrichments.txt output file, which includes an overall combined
+      Fisher's combined p-value for the overall region, WAP, and hotspot (if present) p-values.
+
 02-12-2019
 ----------
 - Version 1.1.2
