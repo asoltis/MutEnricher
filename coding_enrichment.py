@@ -922,7 +922,7 @@ def count_mutations_from_maf(MAF,genes,gene2index,terms,tType,snps_only,blacklis
         if ln == 0: continue # Skip header line
         l = line.strip().split('\t')
         try:
-            gene,chrom,mstart,mstop,varclass,vartype,ref,alt,name = l[0],l[4],int(l[5]),int(l[6]),l[8],l[9],l[10],l[11],l[15]
+            gene,chrom,mstart,mstop,varclass,vartype,ref,alt,name = l[0],l[4],int(l[5]),int(l[6]),l[8],l[9],l[10],l[12],l[15]
         except:
             print 'Could not parse line in MAF: %s'%(line)
             sys.exit()
@@ -1219,6 +1219,7 @@ def get_gene_enrichments_global_bg(g,bg_rates,ns):
     # Calculate full region p-value
     try: 
         pvf = betainc(kf,xf-kf+1,bg)
+        pvf = max(2.2250738585072014e-308, pvf)
     except:
         print '  error at gene %s with length: %d, num mutations: %d, and bg: %f'%(g.name,g.coding_length,kf,bg)
         pvf = 1
@@ -1245,6 +1246,7 @@ def get_gene_enrichments_local_bg(g,ns):
     # Calculate full region p-value
     try: 
         pvf = betainc(kf,xf-kf+1,bg)
+        pvf = max(2.2250738585072014e-308, pvf)
     except:
         print '  error at gene %s with length: %d, num mutations: %d, and bg: %f'%(g.name,g.coding_length,kf,bg)
         pvf = 1
@@ -1265,6 +1267,7 @@ def get_gene_enrichments_covar(g,ns):
     # Calculate full region p-value
     try:
         pvf = betainc(kf,xf-kf+1,bg)
+        pvf = max(2.2250738585072014e-308, pvf)
     except:
         print '  error at gene %s with length: %d, num mutations: %d, and bg: %f'%(g.name,g.coding_length,kf,bg)
         pvf = 1
