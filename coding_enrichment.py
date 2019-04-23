@@ -1313,6 +1313,7 @@ def get_hotspot_enrichments_covar(g,genes,ns,global_bg,scr,bg_vtype):
     
             # Calculate p-values
             pv = betainc(k,x-k+1,bgp) 
+            pv = max(2.2250738585072014e-308, pv)
 
             # Get counts for positions and mutations
             counter = Counter(g.clusters[clust]['positions'])
@@ -1363,7 +1364,8 @@ def get_hotspot_enrichments_local(g,ns):
             for s in cs: bgp_l.append(g.local_backgrounds[s]['bg_rate'])
             bgp = gmean(bgp_l) # geometric mean
             pv = betainc(k,x-k+1,bgp)
-
+            pv = max(2.2250738585072014e-308, pv)
+            
             # Get counts for positions and mutations
             counter = Counter(g.clusters[clust]['positions'])
             count_s = []
@@ -1412,7 +1414,8 @@ def get_hotspot_enrichments_global(g,global_bg_rates,ns):
             for s in cs: bgp_l.append(global_bg_rates[s])
             bgp = gmean(bgp_l) # geometric mean
             pv = betainc(k,x-k+1,bgp)
-
+            pv = max(2.2250738585072014e-308, pv)
+            
             # Get counts for positions and mutations
             counter = Counter(g.clusters[clust]['positions'])
             count_s = []

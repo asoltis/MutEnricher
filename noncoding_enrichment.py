@@ -779,6 +779,7 @@ def get_region_enrichments_global(r,bg_rates,ns):
     # Calculate full region p-value
     try: 
         pvf = betainc(kf,xf-kf+1,bg)
+        pvf = max(2.2250738585072014e-308, pvf) 
     except:
         print '  error at region %s with length: %d, num mutations: %d, and bg: %f'%(r.region_string,r.length,kf,bg)
         pvf = 1
@@ -802,6 +803,7 @@ def get_region_enrichments_local(r,ns):
     # Calculate full region p-value
     try: 
         pvf = betainc(kf,xf-kf+1,bg)
+        pvf = max(2.2250738585072014e-308, pvf) 
     except:
         print '  error at region %s with length: %d, num mutations: %d, and bg: %f'%(r.region_string,r.length,kf,bg)
         pvf = 1
@@ -822,6 +824,7 @@ def get_region_enrichments_covar(r,ns):
     # Calculate full region p-value
     try: 
         pvf = betainc(kf,xf-kf+1,bg)
+        pvf = max(2.2250738585072014e-308, pvf)
     except:
         print '  error at region %s with length: %d, num mutations: %d, and bg: %f'%(r.region_string,r.length,kf,bg)
         pvf = 1
@@ -862,7 +865,8 @@ def get_hotspot_enrichments_covar(r,regions,ns,scr):
 
             # Calculate p-values
             pv = betainc(k,x-k+1,bgp)
-
+            pv = max(2.2250738585072014e-308, pv)
+            
             # Get counts for positions and mutations
             counter = Counter(r.clusters[clust]['positions'])
             count_s = []
@@ -915,7 +919,8 @@ def get_hotspot_enrichments_local(r,ns):
 
             # Calculate p-values
             pv = betainc(k,x-k+1,bgp)
-
+            pv = max(2.2250738585072014e-308, pv)
+            
             # Get counts for positions and mutations
             counter = Counter(r.clusters[clust]['positions'])
             count_s = []
@@ -964,7 +969,8 @@ def get_hotspot_enrichments_global(r,global_bg_rates,ns):
             for s in cs: bgp_l.append(global_bg_rates[s])
             bgp = gmean(bgp_l) # geometric mean
             pv = betainc(k,x-k+1,bgp)
-
+            pv = max(2.2250738585072014e-308, pv)
+            
             # Get counts for positions and mutations
             counter = Counter(r.clusters[clust]['positions'])
             count_s = []
