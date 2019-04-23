@@ -7,7 +7,7 @@ Institution: Uniformed Services University of the Health Sciences, Bethesda, MD
 
 License: MIT License, see [License](https://github.com/asoltis/MutEnricher/blob/master/LICENSE.txt)
 
-Version: 1.1.2
+Version: 1.1.3
 
 Introduction:
 ---------------
