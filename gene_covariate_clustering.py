@@ -1,4 +1,4 @@
-from __future__ import division
+from __future__ import division, print_function
 import sys,os
 import math
 import numpy as np
@@ -21,14 +21,14 @@ def covariate_cluster(cfn,weights_fn,sim_prefix,ap_iters,convits,alg,pool,contig
     Main driver function for clustering analysis.
     '''
     # Read in covariate information
-    print 'Loading covariates information...'
+    print('Loading covariates information...')
     if contigs != None:
-        print '  performing by contig analysis.'
+        print('  performing by contig analysis.')
         covars,vals_D = read_covariates_file(cfn,contigs)
     else:
-        print '  performing analysis using all genes.'
+        print('  performing analysis using all genes.')
         covars,vals_D = read_covariates_file(cfn)
-    print '\nCovariates loaded from input file: ',covars
+    print('\nCovariates loaded from input file: ',covars)
 
     # Load weights
     weights = []
@@ -43,10 +43,10 @@ def covariate_cluster(cfn,weights_fn,sim_prefix,ap_iters,convits,alg,pool,contig
         for c in covars:
             weights.append(wd[c])
         weights = np.array(weights)/sum(weights) # assure weights sum to 1
-        print '\nUsing user-supplied weights (sum = 1): ',weights
+        print('\nUsing user-supplied weights (sum = 1): ',weights)
 
     # Compute similarities by contig
-    print '\nComputing similarities...'
+    print('\nComputing similarities...')
     for contig in vals_D:
         # set up output file
         sfn = sim_prefix + '%s/similarities.txt'%(contig)
@@ -71,10 +71,10 @@ def covariate_cluster(cfn,weights_fn,sim_prefix,ap_iters,convits,alg,pool,contig
     # call to compute
     res = [pool.apply_async(compute_similarities,args=(vals_D[c]['zvals'],vals_D[c]['sim_fn'],vals_D[c]['weights'])) for c in vals_D]
     resg = [r.get() for r in res]
-    print 'Similarities computed.'
+    print('Similarities computed.')
 
     # Run AP cluster    
-    print '\nRunning affinity propagation on similarities...'
+    print('\nRunning affinity propagation on similarities...')
     res = [pool.apply_async(apcluster,args=(vals_D[c]['sim_fn'],sim_prefix+c+'/',None,ap_iters,convits,alg)) for c in vals_D]
     resc = [r.get() for r in res]
     # CODE TO CHECK IF ANY AP RUNS FAILED #
@@ -87,7 +87,7 @@ def covariate_cluster(cfn,weights_fn,sim_prefix,ap_iters,convits,alg,pool,contig
                 unfinished.append(c)
         if len(unfinished) == 0: converged = True
         else: 
-            print '  re-running unfinished contigs:',unfinished
+            print('  re-running unfinished contigs:',unfinished)
             svals = []
             for c in unfinished:
                 s = [float(x.split()[1]) for x in open(sim_prefix+c+'/summary.txt').readlines() if x.startswith('Preferences:')][0]
@@ -97,21 +97,21 @@ def covariate_cluster(cfn,weights_fn,sim_prefix,ap_iters,convits,alg,pool,contig
                 svals.append(s_new)    
             resRe = [pool.apply_async(apcluster,args=(vals_D[c]['sim_fn'],sim_prefix+c+'/',svals[i],ap_iters,convits,alg)) for i,c in enumerate(unfinished)]
             resRec = [r.get() for r in resRe] 
-    print 'Affinity propagation clusters generated.'
+    print('Affinity propagation clusters generated.')
     
     # Clean up directories by removing similarities files
     for c in vals_D:
         simfn = vals_D[c]['sim_fn']
         os.system('rm %s'%(simfn))
 
-    print '\nWriting cluster outputs...'
+    print('\nWriting cluster outputs...')
     clusters_D = {}
     for c in vals_D:
         od = sim_prefix+c+'/'
         cl = write_clusters(od,vals_D[c]['ids'])
         clusters_D[c] = cl
     return clusters_D
-    print '\nGene clustering finished.'
+    print('\nGene clustering finished.')
 
 #####################
 # UTILITY FUNCTIONS #
@@ -164,7 +164,7 @@ def compute_similarities(mat,sim_fn,weights):
             sim = dist(v1,v2,weights)
             of.writelines('%d %d %0.3g\n'%(i+1,j+1,sim)) # only need to write s(i->j) in this case
     of.close() 
-    print '  %s done.'%(sim_fn.split('/')[-2])
+    print('  %s done.'%(sim_fn.split('/')[-2]))
 
 def dist(v1,v2,weights,metric='negEuclidean'):
     '''
@@ -187,7 +187,7 @@ def apcluster(sim_fn,outdir,s=None,ap_iters=1000,convits=50,alg='fast'):
         converged = run_ap_fast(sim_fn,preference=s,maxits=ap_iters,convits=convits,outdir=outdir)
     elif alg == 'slow':
         converged = run_ap_slow(sim_fn,preference=s,maxits=ap_iters,convits=convits,outdir=outdir)
-    print '  %s done.'%(sim_fn.split('/')[-2])
+    print('  %s done.'%(sim_fn.split('/')[-2]))
     return converged
 
 def write_clusters(outdir,ID):

@@ -1,18 +1,21 @@
-from __future__ import division
-import sys, os
+from __future__ import division, print_function
+import sys, os, copy
 import argparse
 import numpy as np
 from cyvcf2 import VCF
 import multiprocessing as mp
-import cPickle 
+if sys.version_info.major == 2:
+    import cPickle 
+elif sys.version_info.major == 3:
+    import _pickle as cPickle
 import time
 from collections import Counter
 import random
+from scipy.special import betainc
+from scipy.stats import binom_test as BT
 from scipy.stats.mstats import gmean
-#from scipy.stats import chi2 as chi2
 from scipy.stats import combine_pvalues as CPVAL
 from math_funcs import WAP
-from scipy.special import betainc
 from region_covariate_clustering import covariate_cluster as covc
 from pysam import TabixFile
 import gzip
@@ -27,9 +30,9 @@ Created by Anthony R. Soltis (anthony.soltis.ctr@usuhs.edu)
 #######
 def run(parser, args, version):
     
-    print '------------------------MUTENRICHER NON-CODING------------------------'
-    print 'MutEnricher version: %s'%(version)
-  
+    print('------------------------MUTENRICHER NON-CODING------------------------')
+    print('MutEnricher version: %s'%(version))
+
     ###############################
     # ARGUMENT AND OPTION PARSING #
     ###############################
@@ -44,6 +47,9 @@ def run(parser, args, version):
     for line in open(list_fn):
         fn,sn = tuple(line.strip().split('\t'))
         if not os.path.isfile(fn) or not os.path.isfile(fn+'.tbi'): parser.error('VCF or index file missing for sample %s.'%(sn))
+        # check valid VCFs
+        try: vtmp = VCF(fn)
+        except: parser.error('%s is not a valid VCF file. Exiting.'%(fn))
 
     # Set VCF data # 
     VCFs,sample_names = [],[]
@@ -53,24 +59,28 @@ def run(parser, args, version):
         sample_names.append(n)
     ns = len(VCFs) # Number of samples
     if len(set(sample_names)) < ns:
-        print 'WARNING: non-unique sample IDs provided in VCF list file! Exiting.'
-        sys.exit()
+        parser.error('WARNING: non-unique sample IDs provided in VCF list file! Exiting.')
 
     # OPTIONS
-    print '\n----------------------------INITIALIZATION----------------------------'
+    print('\n----------------------------INITIALIZATION----------------------------')
     outdir = vargs['outdir']
     os.system('mkdir -p %s'%(outdir))
-    print 'Output directory for results: %s'%(outdir)
+    print('Output directory for results: %s'%(outdir))
     if not outdir.endswith('/'): outdir+='/'
     prefix = vargs['prefix'] + '_'
-    print 'Analysis prefix: %s'%(prefix)
+    print('Analysis prefix: %s'%(prefix))
     nprocessors = min(mp.cpu_count(),vargs['nprocessors'])
     snps_only = vargs['snps_only']
+    # count test type
+    stat_type = vargs['stat_type']
+    if stat_type not in ['nmutations','nsamples']:
+        parser.error("--count-type must be one of either 'nmutations' or 'nsamples'.")
+    print('Statistical testing type: %s'%(stat_type))
     # Mappability information
     mapr = vargs['map_regions']
     if mapr != None:
         if not os.path.isfile(mapr) or not os.path.isfile(mapr+'.tbi'): parser.error('Mappability file and/or its index not found!')
-        print 'Loaded mappable regions from input BED file.'
+        print('Loaded mappable regions from input BED file.')
     # covariates data
     use_covars = False
     cov_fn = vargs['cov_fn']
@@ -97,7 +107,7 @@ def run(parser, args, version):
     # check if local background requested
     use_local = False
     if vargs['use_local'] == True and use_covars == True:
-        print '  --use-local selected but covariates provided. Skipping this option and using covariates for backgrounds.'
+        print('  --use-local selected but covariates provided. Skipping this option and using covariates for backgrounds.')
         use_local = False
     elif vargs['use_local'] == True and use_covars == False:
         use_local = True
@@ -136,15 +146,15 @@ def run(parser, args, version):
 
     # initialize parallel pool
     pool = mp.Pool(processes=nprocessors)
-    print 'Set pool with %d processors'%(nprocessors)
+    print('Set pool with %d processors'%(nprocessors))
 
     #############
     # EXECUTION #
     #############
 
     # Load in regions
-    print '\n----------------------------LOADING REGIONS---------------------------'
-    print 'Loading regions...'
+    print('\n----------------------------LOADING REGIONS---------------------------')
+    print('Loading regions...')
     regions = load_regions(regions_fn,mapr)
     # Create region2index dictionary
     reg2index = {}
@@ -152,19 +162,19 @@ def run(parser, args, version):
         ind = r.index
         rstr = r.region_string
         reg2index[rstr] = ind
-    print 'Loaded %d regions from input BED file.'%(len(regions))
+    print('Loaded %d regions from input BED file.'%(len(regions)))
     oflog.writelines('Loaded %d regions from input BED file.\n'%(len(regions)))
 
     # Load blacklist if provided
     if bl_fn != None:
-        print '\nLoading blacklist variants file...'
+        print('\nLoading blacklist variants file...')
         blacklist = load_blacklist(bl_fn)
-        print 'Blacklist variants loaded.'
+        print('Blacklist variants loaded.')
     else: blacklist=None
 
     # Regional clustering 
     if use_covars:
-        print '\n----------------------REGION COVARIATE CLUSTERING----------------------'
+        print('\n----------------------REGION COVARIATE CLUSTERING----------------------')
         time0_cov = time.time()
         region_clusters = {}
         if not clust_precompute:
@@ -172,7 +182,7 @@ def run(parser, args, version):
             os.system('mkdir -p %s'%(cpath))
             region_clusters = covc(cov_fn,weights_fn,cpath,ap_iters,ap_convits,ap_alg,pool)
         else:
-            print 'Using pre-computed clusters.'
+            print('Using pre-computed clusters.')
             cpath = vargs['cov_precomp_dir']
             #contigs = os.listdir(cpath)
             contigs = [x for x in os.listdir(cpath) if os.path.isdir(cpath+x)]
@@ -211,8 +221,8 @@ def run(parser, args, version):
                 small_clust_regions.add(reg2index[r.region_string])
         
         # Calculate local background rate for small cluster regions
-        print '\nCalculating local background rates for %d regions with fewer than %d'%(len(small_clust_regions),min_rclust_size)
-        print 'cluster members.'
+        print('\nCalculating local background rates for %d regions with fewer than %d'%(len(small_clust_regions),min_rclust_size))
+        print('cluster members.')
         chunk_size_local = 50
         num_chunks_local = int(np.ceil(len(small_clust_regions)/chunk_size_local))
         chunks_local = []
@@ -226,14 +236,14 @@ def run(parser, args, version):
             for rr in rget:
                 assert regions[rr.index].index == rr.index
                 regions[rr.index] = rr
-        print '\nRegion covariate clustering analysis complete (%0.2f min.).'%((time.time() - time0_cov)/60)
+        print('\nRegion covariate clustering analysis complete (%0.2f min.).'%((time.time() - time0_cov)/60))
 
     pool.close()
     pool = mp.Pool(processes=nprocessors)
 
     # Extract mutation info from VCFs
-    print '\n---------------------------MUTATION COUNTING---------------------------'
-    print 'Extracting mutations from %d VCF files...'%(len(VCFs))
+    print('\n---------------------------MUTATION COUNTING---------------------------')
+    print('Extracting mutations from %d VCF files...'%(len(VCFs)))
     time0_mutc = time.time()
     dones,was_done = [],0
     chunk_size = 1000
@@ -242,19 +252,19 @@ def run(parser, args, version):
     for i in range(0,num_chunks):
         rr = range(i*chunk_size,min((i+1)*chunk_size,len(regions)))
         chunks.append(regions[rr[0]:rr[-1]+1])
-    print '  Divided %d regions into %d region chunks.'%(len(regions),num_chunks)
+    print('  Divided %d regions into %d region chunks.'%(len(regions),num_chunks))
     res = [pool.apply_async(count_mutations_from_vcfs,args=(VCFs,sample_names,c,snps_only,blacklist,mapr),callback=dones.append) for c in chunks]
     while len(dones) != num_chunks:
         if len(dones)%10==0 and was_done != len(dones):
             was_done = len(dones)
-            print '    %d of %d region chunks complete.'%(len(dones),num_chunks)
+            print('    %d of %d region chunks complete.'%(len(dones),num_chunks))
     regions = []
     for r in res:
         rget = r.get()
         for rr in rget: regions.append(rr)
     regions = sorted(regions,key=lambda x:x.index) # re-sort new regions by index
-    print 'Done extracting mutations in VCF files (%0.2f min.).'%((time.time() - time0_mutc)/60)
-    
+    print('Done extracting mutations in VCF files (%0.2f min.).'%((time.time() - time0_mutc)/60))
+
     # Log mutations
     total_muts, tot_r_with_mutation = 0, 0
     for r in regions:
@@ -268,17 +278,17 @@ def run(parser, args, version):
     pool = mp.Pool(processes=nprocessors)
     
     # Get global per-sample background rates
-    print '\n------------------------BACKGROUND CALCULATIONS------------------------'
+    print('\n------------------------BACKGROUND CALCULATIONS------------------------')
     time0_gbg = time.time()
   
     # Get cluster background
     if use_covars:
-        print 'Calculating covariate background rates...'
+        print('Calculating covariate background rates...')
         for r in regions: 
             if r.num_mutations == 0: continue
             get_cluster_bg_rates(r,regions,scr)
     elif use_local:
-        print 'Calculating local region background rates...'
+        print('Calculating local region background rates...')
         chunk_size = 100
         regs_for_local = [r for r in regions if r.num_mutations > 0] 
         num_chunks = int(np.ceil(len(regs_for_local)/chunk_size))
@@ -292,14 +302,14 @@ def run(parser, args, version):
             for rr in rget:
                 assert regions[rr.index].index == rr.index
                 regions[rr.index] = rr
-        print 'Local backgrounds obtained.'
+        print('Local backgrounds obtained.')
     else:
-        print 'Calculating global per-sample region background rates...'
+        print('Calculating global per-sample region background rates...')
         global_bg_rates = get_global_bg_rates(regions,sample_names)
-    print 'Background rates calculated (%0.2f min.).'%((time.time()-time0_gbg)/60)
+    print('Background rates calculated (%0.2f min.).'%((time.time()-time0_gbg)/60))
    
-    print '\n-----------------------CANDIDATE HOTSPOT FINDING-----------------------'
-    print 'Finding candidate hotspots in regions...'
+    print('\n-----------------------CANDIDATE HOTSPOT FINDING-----------------------')
+    print('Finding candidate hotspots in regions...')
     time0_hs = time.time()
     tot_r_with_hs, tot_hotspots = 0, 0
     for r in regions:
@@ -309,66 +319,57 @@ def run(parser, args, version):
             tot_r_with_hs += 1
             tot_hotspots += len(r.clusters)
     oflog.writelines('Identified %d candidate hotspots in %d regions for testing.\n'%(tot_hotspots, tot_r_with_hs))
-    print 'Candidate hotspot regions obtained (%0.2f min.).'%((time.time()-time0_hs)/60)
-   
+    print('Candidate hotspot regions obtained (%0.2f min.).'%((time.time()-time0_hs)/60))
+
     # Calculate region and hotspot enrichment p-values
-    print '\n--------------------------ENRICHMENT ANALYSES--------------------------'
-    print 'Calculating region and hotspot enrichment p-values with negative binomial tests...'
-    print '\nPerforming regional enrichment analysis...'
+    print('\n--------------------------ENRICHMENT ANALYSES--------------------------')
+    print('Calculating region and hotspot enrichment p-values with negative binomial tests...')
+    print('\nPerforming regional enrichment analysis...')
     time0_enr = time.time()
     if use_covars:
-        print '  Using clustered covariate background regions.'
-        res = [pool.apply_async(get_region_enrichments_covar,args=(r,ns)) for r in regions if r.num_mutations>0]
+        print('  Using clustered covariate background regions.')
+        res = [pool.apply_async(get_region_enrichments_covar,args=(r,ns,stat_type)) for r in regions if r.num_mutations>0]
         rget = [r.get() for r in res]
-        #for r in rget:
-        #    assert regions[r.index].index == r.index
-        #    regions[r.index] = r
         for r in rget:
             index,pvf = r
             regions[index].region_pval = pvf
     elif use_local:
-        print '  Using local background rates.'
-        res = [pool.apply_async(get_region_enrichments_local,args=(r,ns)) for r in regions if r.num_mutations>0]
+        print('  Using local background rates.')
+        res = [pool.apply_async(get_region_enrichments_local,args=(r,ns,stat_type)) for r in regions if r.num_mutations>0]
         rget = [r.get() for r in res]
-        #for r in rget:
-        #    assert regions[r.index].index == r.index
-        #    regions[r.index] = r
         for r in rget:
             index,bgprob,bgtype,pvf = r
             regions[index].background_prob = bgprob
             regions[index].enrichment_bg_type = bgtype
             regions[index].region_pval = pvf
     else:
-        print '  Using global background rates.'
-        res = [pool.apply_async(get_region_enrichments_global,args=(r,global_bg_rates,ns)) for r in regions if r.num_mutations>0]
+        print('  Using global background rates.')
+        res = [pool.apply_async(get_region_enrichments_global,args=(r,global_bg_rates,ns,stat_type)) for r in regions if r.num_mutations>0]
         rget = [r.get() for r in res]
-        #for r in rget:
-        #    assert regions[r.index].index == r.index
-        #    regions[r.index] = r
         for r in rget:
             index,bgprob,bgtype,pvf = r
             regions[index].background_prob = bgprob
             regions[index].enrichment_bg_type = bgtype
             regions[index].region_pval = pvf
-    print '\nRegion enrichment p-values obtained (%0.2f min.).'%((time.time() - time0_enr)/60)
-    
+    print('\nRegion enrichment p-values obtained (%0.2f min.).'%((time.time() - time0_enr)/60))
+
     # get hotspot enrichments
-    print '\nCalculating hotspot enrichment p-values with negative binomial tests...'
+    print('\nCalculating hotspot enrichment p-values with negative binomial tests...')
     time0_hse = time.time()
     if use_covars:
-        print '  Using clustered covariate background regions.'
+        print('  Using clustered covariate background regions.')
         clust_output = []
         for r in regions:
             if len(r.clusters) > 0:
-                oce = get_hotspot_enrichments_covar(r,regions,ns,scr)
+                oce = get_hotspot_enrichments_covar(r,regions,ns,scr,stat_type)
                 clust_output.append(oce) 
     elif use_local:
-        print '  Using local background rates.'
-        clust_results = [pool.apply_async(get_hotspot_enrichments_local,args=(r,ns)) for r in regions if len(r.clusters)>0]
+        print('  Using local background rates.')
+        clust_results = [pool.apply_async(get_hotspot_enrichments_local,args=(r,ns,stat_type)) for r in regions if len(r.clusters)>0]
         clust_output = [p.get() for p in clust_results]
     else:
-        print '  Using global background rates.'
-        clust_results = [pool.apply_async(get_hotspot_enrichments_global,args=(r,global_bg_rates,ns)) for r in regions if len(r.clusters)>0]
+        print('  Using global background rates.')
+        clust_results = [pool.apply_async(get_hotspot_enrichments_global,args=(r,global_bg_rates,ns,stat_type)) for r in regions if len(r.clusters)>0]
         clust_output = [p.get() for p in clust_results]
     clust_out_adjust = []
     for co in clust_output: 
@@ -380,8 +381,8 @@ def run(parser, args, version):
     for cr in cluster_enrichments: pvals.append(cr[-5])
     fdrs = fdr_BH(np.array(pvals))
     for i,cr in enumerate(cluster_enrichments): cr.insert(9,fdrs[i])
-    print '\nHotspot enrichment p-values obtained (%0.2f min.).'%((time.time() - time0_hse)/60)
-     
+    print('\nHotspot enrichment p-values obtained (%0.2f min.).'%((time.time() - time0_hse)/60))
+
     # Assign hotspots to their originating regions
     for i,cr in enumerate(cluster_enrichments):
         rindex = reg2index[cr[1]]
@@ -391,9 +392,9 @@ def run(parser, args, version):
   
     # perform WAP hotspot analysis
     if no_wap:
-        print '\nSkipping weighted average proximity (WAP) procedure.'
+        print('\nSkipping weighted average proximity (WAP) procedure.')
     else:
-        print '\nPerforming weighted average proximity (WAP) hotspot enrichments...'
+        print('\nPerforming weighted average proximity (WAP) hotspot enrichments...')
         time0_wap = time.time()
         dones,was_done = [],0
         res = [pool.apply_async(hotspot_wap_pval,args=(r,),callback=dones.append) for r in regions if r.num_mutations>=min_clust_vars]
@@ -401,18 +402,18 @@ def run(parser, args, version):
         while len(dones) < nreg:
             if len(dones)%5000 == 0 and was_done != len(dones):
                 was_done = len(dones)
-                print '  %d of %d regions complete.'%(was_done,nreg)
+                print('  %d of %d regions complete.'%(was_done,nreg))
         rget = [r.get() for r in res]
         n_wap_tests = 0
         for r in rget:
             assert regions[r.index].index == r.index
             regions[r.index] = r
             n_wap_tests += 1
-        print '\nWAP analysis complete (%0.2f min.).'%((time.time() - time0_wap)/60)
+        print('\nWAP analysis complete (%0.2f min.).'%((time.time() - time0_wap)/60))
         oflog.writelines('Performed WAP analysis on %d regions with >= %d mutations.\n'%(n_wap_tests,min_clust_vars))
 
     # Compute Fisher combined p-values 
-    print '\nCombining region and WAP p-values with Fisher method...'
+    print('\nCombining region and WAP p-values with Fisher method...')
     for r in regions:
         if r.num_mutations < 1: continue
         elif r.WAP_pval == None: 
@@ -422,7 +423,7 @@ def run(parser, args, version):
         else: r.compute_rw_fisher()
 
     # Write region enrichment output
-    print '\nCorrecting p-values and writing regional and WAP enrichment analyses output...'
+    print('\nCorrecting p-values and writing regional and WAP enrichment analyses output...')
     ofr = open(outdir+prefix+'region_WAP_enrichments.txt','w') 
     ofr.writelines('\t'.join(['Region','region_name','num_mutations','length','effective_length','bg_type','bg_prob','region_pval',
                               'WAP','WAP_pval','Fisher_pval','FDR_BH','num_samples','position_counts','mutation_counts','samples'])+'\n')
@@ -464,7 +465,7 @@ def run(parser, args, version):
     oflog.writelines('\n%d region enrichment results reported.\n'%(tot_r_output))
 
     # Write hotspot enrichment output 
-    print 'Writing hotspot enrichment analysis output...'
+    print('Writing hotspot enrichment analysis output...')
     of = open(outdir+prefix+'hotspot.txt','w')
     of.writelines('\t'.join(['Hotpsot','region','region_name','num_mutations','hotspot_length','effective_length',
                              'bg_type','bg_prob','pval','FDR_BH','num_samples','position_counts','mutation_counts','samples'])+'\n')
@@ -475,7 +476,7 @@ def run(parser, args, version):
     oflog.writelines('%d region hotspot enrichment results reported.\n'%(len(cluster_enrichments)))
 
     # Create combined region, WAP, and hotspot output
-    print '\nCreating combined region, WAP, and hotspot enrichment output...'
+    print('\nCreating combined region, WAP, and hotspot enrichment output...')
     # compute Fisher p-values
     minFisher = 2.2250738585072014e-308
     for r in regions:
@@ -540,14 +541,14 @@ def run(parser, args, version):
     ofF.close()
     
     # Save regions analysis as python pickle object
-    cPickle.dump(regions,open(outdir+prefix+'region_data.pkl','w'))
+    cPickle.dump(regions,open(outdir+prefix+'region_data.pkl','wb'))
 
     # close pool, log file
     pool.close()
     oflog.close()
 
     # Finish statement
-    print '\nAnalysis finished in %0.2f minutes.\n'%((time.time() - time0_master)/60)
+    print('\nAnalysis finished in %0.2f minutes.\n'%((time.time() - time0_master)/60))
 
 ############
 # END MAIN #
@@ -707,7 +708,6 @@ def get_local_background(regions,VCFs,names,snps_only,blacklist=None,for_covar=F
 
             # Get max rate
             maxi,maxr = 0,bgs_per_win[0]
-            #print bgs_per_win
             for i,bgr in enumerate(bgs_per_win):
                 if bgr > maxr:
                     maxi,maxr = i,bgr
@@ -763,76 +763,113 @@ def get_cluster_bg_rates(r,regions,scr):
     bgpf = gmean(bgpf_l) # geometric mean
     r.background_prob = bgpf
 
-def get_region_enrichments_global(r,bg_rates,ns):
+def get_region_enrichments_global(r,bg_rates,ns,stat_type):
     '''
     Function for determining full region enrichments using global background rates.
     Return tuple data.
     '''
     # calculate p-value for full region
     xf = r.length * ns
-    kf = r.num_mutations
     rsamps = r.mutations_by_sample.keys()
+    kf = r.num_mutations
+    nmut = len(rsamps)
     bg_l = []
     for s in rsamps: bg_l.append(bg_rates[s])
     bg = gmean(bg_l)
     
     # Calculate full region p-value
-    try: 
-        pvf = betainc(kf,xf-kf+1,bg)
-        pvf = max(2.2250738585072014e-308, pvf) 
-    except:
-        print '  error at region %s with length: %d, num mutations: %d, and bg: %f'%(r.region_string,r.length,kf,bg)
-        pvf = 1
-
+    if stat_type == 'nmutations':
+        # compute with negative binomial test
+        try: 
+            pvf = betainc(kf,xf-kf+1,bg)
+            pvf = max(2.2250738585072014e-308, pvf) 
+        except:
+            print('  error at region %s with length: %d, num mutations: %d, and bg: %f'%(r.region_string,r.length,kf,bg))
+            pvf = 1
+    elif stat_type == 'nsamples':
+        # compute with binomial test
+        pi = 1 - pow(1 - bg, r.length) # pi = 1 - (1 - bg)^L
+        try:
+            pvf = BT(nmut, ns, pi, alternative='greater')
+            pvf = max(2.2250738585072014e-308, pvf) 
+        except:
+            print('  error at region %s with length: %d, num mutations: %d, and bg: %f'%(r.region_string,r.length,kf,bg))
+            pvf = 1
+    
     # Return tuple
     return (r.index,bg,'global',pvf)
 
-def get_region_enrichments_local(r,ns):
+def get_region_enrichments_local(r,ns,stat_type):
     '''
     Function for determining full region enrichments using local background rates.
     Return tuple data.
     '''
     # calculate p-value for full region
     xf = r.length * ns
-    kf = r.num_mutations
     rsamps = r.mutations_by_sample.keys()
+    kf = r.num_mutations
+    nmut = len(rsamps)
     bg_l = []
     for s in rsamps: bg_l.append(r.local_backgrounds[s]['bg_rate'])
     bg = gmean(bg_l)
     
     # Calculate full region p-value
-    try: 
-        pvf = betainc(kf,xf-kf+1,bg)
-        pvf = max(2.2250738585072014e-308, pvf) 
-    except:
-        print '  error at region %s with length: %d, num mutations: %d, and bg: %f'%(r.region_string,r.length,kf,bg)
-        pvf = 1
+    if stat_type == 'nmutations':
+        # compute with negative binomial test
+        try: 
+            pvf = betainc(kf,xf-kf+1,bg)
+            pvf = max(2.2250738585072014e-308, pvf) 
+        except:
+            print('  error at region %s with length: %d, num mutations: %d, and bg: %f'%(r.region_string,r.length,kf,bg))
+            pvf = 1
+    elif stat_type == 'nsamples':
+        # compute with binomial test
+        pi = 1 - pow(1 - bg, r.length) # pi = 1 - (1 - bg)^L
+        try:
+            pvf = BT(nmut, ns, pi, alternative='greater')
+            pvf = max(2.2250738585072014e-308, pvf) 
+        except:
+            print('  error at region %s with length: %d, num mutations: %d, and bg: %f'%(r.region_string,r.length,kf,bg))
+            pvf = 1
     
     # Return tuple
     return (r.index,bg,'local',pvf)
 
-def get_region_enrichments_covar(r,ns):
+def get_region_enrichments_covar(r,ns,stat_type):
     '''
     Function for determining full region enrichments using clustered covariate background rates.
     Return tuple data.
     '''
     # calculate p-value for full region
     xf = r.length * ns
-    kf = r.num_mutations #- 1
     bg = r.background_prob
+    rsamps = r.mutations_by_sample.keys()
+    kf = r.num_mutations
+    nmut = len(rsamps)
 
     # Calculate full region p-value
-    try: 
-        pvf = betainc(kf,xf-kf+1,bg)
-        pvf = max(2.2250738585072014e-308, pvf)
-    except:
-        print '  error at region %s with length: %d, num mutations: %d, and bg: %f'%(r.region_string,r.length,kf,bg)
-        pvf = 1
-
+    if stat_type == 'nmutations':
+        # compute with negative binomial test
+        try: 
+            pvf = betainc(kf,xf-kf+1,bg)
+            pvf = max(2.2250738585072014e-308, pvf) 
+        except:
+            print('  error at region %s with length: %d, num mutations: %d, and bg: %f'%(r.region_string,r.length,kf,bg))
+            pvf = 1
+    elif stat_type == 'nsamples':
+        # compute with binomial test
+        pi = 1 - pow(1 - bg, r.length) # pi = 1 - (1 - bg)^L
+        try:
+            pvf = BT(nmut, ns, pi, alternative='greater')
+            pvf = max(2.2250738585072014e-308, pvf) 
+        except:
+            print('  error at region %s with length: %d, num mutations: %d, and bg: %f'%(r.region_string,r.length,kf,bg))
+            pvf = 1
+    
     # Return tuple
     return (r.index,pvf)
 
-def get_hotspot_enrichments_covar(r,regions,ns,scr):
+def get_hotspot_enrichments_covar(r,regions,ns,scr,stat_type):
     '''
     Compute hotspot enrichment p-values using negative binomial test with clustered-region background rates.
     '''
@@ -845,11 +882,12 @@ def get_hotspot_enrichments_covar(r,regions,ns,scr):
             clust_name = r.clusters[clust]['name']
 
             # data for NB test 
-            k = r.clusters[clust]['count']
             c_len = r.clusters[clust]['length']
             x = c_len * ns # cluster length times number of samples
+            k = r.clusters[clust]['count']
             cs = r.clusters[clust]['samples']
-            
+            nmut = len(cs)
+
             # Get background            
             bgp_l,bg_type = [],''
             if r.index in scr:
@@ -864,9 +902,16 @@ def get_hotspot_enrichments_covar(r,regions,ns,scr):
             bgp = gmean(bgp_l) # geometric mean
 
             # Calculate p-values
-            pv = betainc(k,x-k+1,bgp)
-            pv = max(2.2250738585072014e-308, pv)
-            
+            if stat_type == 'nmutations':
+                # use negative binomial test
+                pv = betainc(k,x-k+1,bgp) 
+                pv = max(2.2250738585072014e-308, pv)
+            elif stat_type == 'nsamples':
+                # use binomial test
+                pi = 1 - pow(1 - bgp, c_len) # pi = 1 - (1 - bg)^Len_hs
+                pv = BT(nmut, ns, pi, alternative='greater')
+                pv = max(2.2250738585072014e-308, pv)
+
             # Get counts for positions and mutations
             counter = Counter(r.clusters[clust]['positions'])
             count_s = []
@@ -886,14 +931,14 @@ def get_hotspot_enrichments_covar(r,regions,ns,scr):
             count_m = ';'.join(count_m)
 
             # Output info
-            ol = [clust_name,r.region_string,r.name,k,c_len,x,bg_type,bgp,pv,len(cs),count_s,count_m,';'.join(sorted(list(cs)))]
+            ol = [clust_name,r.region_string,r.name,k,c_len,x,bg_type,bgp,pv,nmut,count_s,count_m,';'.join(sorted(list(cs)))]
             enrich.append(ol)
         
         # return
         if len(enrich) > 0:
             return enrich
 
-def get_hotspot_enrichments_local(r,ns):
+def get_hotspot_enrichments_local(r,ns,stat_type):
     '''
     Compute hotspot enrichment p-values using negative binomial test with local background rates.
     '''
@@ -906,21 +951,29 @@ def get_hotspot_enrichments_local(r,ns):
             clust_name = r.clusters[clust]['name']
 
             # data for NB test 
-            k = r.clusters[clust]['count']
             c_len = r.clusters[clust]['length']
             x = c_len * ns # cluster length times number of samples
+            k = r.clusters[clust]['count']
             cs = r.clusters[clust]['samples']
-            
+            nmut = len(cs)
+
             # Get background            
             bgp_l = []
             bg_type = 'local'
             for s in cs: bgp_l.append(r.local_backgrounds[s]['bg_rate'])
             bgp = gmean(bgp_l) # geometric mean
-
-            # Calculate p-values
-            pv = betainc(k,x-k+1,bgp)
-            pv = max(2.2250738585072014e-308, pv)
             
+            # Calculate p-values
+            if stat_type == 'nmutations':
+                # use negative binomial test
+                pv = betainc(k,x-k+1,bgp) 
+                pv = max(2.2250738585072014e-308, pv)
+            elif stat_type == 'nsamples':
+                # use binomial test
+                pi = 1 - pow(1 - bgp, c_len) # pi = 1 - (1 - bg)^Len_hs
+                pv = BT(nmut, ns, pi, alternative='greater')
+                pv = max(2.2250738585072014e-308, pv)
+
             # Get counts for positions and mutations
             counter = Counter(r.clusters[clust]['positions'])
             count_s = []
@@ -940,14 +993,14 @@ def get_hotspot_enrichments_local(r,ns):
             count_m = ';'.join(count_m)
 
             # Output info
-            ol = [clust_name,r.region_string,r.name,k,c_len,x,bg_type,bgp,pv,len(cs),count_s,count_m,';'.join(sorted(list(cs)))]
+            ol = [clust_name,r.region_string,r.name,k,c_len,x,bg_type,bgp,pv,nmut,count_s,count_m,';'.join(sorted(list(cs)))]
             enrich.append(ol)
         
         # return
         if len(enrich) > 0:
             return enrich
 
-def get_hotspot_enrichments_global(r,global_bg_rates,ns):
+def get_hotspot_enrichments_global(r,global_bg_rates,ns,stat_type):
     '''
     Compute hotspot enrichment p-values using negative binomial test with global background rates.
     '''
@@ -961,16 +1014,27 @@ def get_hotspot_enrichments_global(r,global_bg_rates,ns):
             clust_name = r.clusters[clust]['name']
 
             # data for NB test 
-            k = r.clusters[clust]['count']
             c_len = r.clusters[clust]['length']
             x = c_len * ns # cluster length times number of samples
+            k = r.clusters[clust]['count']
             cs = r.clusters[clust]['samples']
+            nmut = len(cs)
+
             bgp_l = []
             for s in cs: bgp_l.append(global_bg_rates[s])
             bgp = gmean(bgp_l) # geometric mean
-            pv = betainc(k,x-k+1,bgp)
-            pv = max(2.2250738585072014e-308, pv)
             
+            # Calculate p-values
+            if stat_type == 'nmutations':
+                # use negative binomial test
+                pv = betainc(k,x-k+1,bgp) 
+                pv = max(2.2250738585072014e-308, pv)
+            elif stat_type == 'nsamples':
+                # use binomial test
+                pi = 1 - pow(1 - bgp, c_len) # pi = 1 - (1 - bg)^Len_hs
+                pv = BT(nmut, ns, pi, alternative='greater')
+                pv = max(2.2250738585072014e-308, pv)
+     
             # Get counts for positions and mutations
             counter = Counter(r.clusters[clust]['positions'])
             count_s = []
@@ -990,7 +1054,7 @@ def get_hotspot_enrichments_global(r,global_bg_rates,ns):
             count_m = ';'.join(count_m)
   
             # Output info
-            ol = [clust_name,r.region_string,r.name,k,c_len,x,bg_type,bgp,pv,len(cs),count_s,count_m,';'.join(sorted(list(cs)))]
+            ol = [clust_name,r.region_string,r.name,k,c_len,x,bg_type,bgp,pv,nmut,count_s,count_m,';'.join(sorted(list(cs)))]
             enrich.append(ol)
         
         # return
@@ -1156,11 +1220,16 @@ def hotspot_wap_pval(region,tau=6,theta=0.25,nperm=1000000):
     
     random.seed(1)
 
+    # get region positions and handle case of all mutations at same location
+    reg_positions = copy.copy(region.positions)
+    if len(set(reg_positions)) == 1:
+        reg_positions[-1] += 1
+
     # true WAP
-    w0 = WAP(region.positions,tau)
+    w0 = WAP(reg_positions,tau)
 
     # Get number of mutations per position
-    n_per_p_C = Counter(region.positions)
+    n_per_p_C = Counter(reg_positions)
     n_per_p = []
     for p in n_per_p_C: n_per_p.append(n_per_p_C[p])
 

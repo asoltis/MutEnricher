@@ -1,16 +1,20 @@
-from __future__ import division
+from __future__ import division, print_function
 import sys, os
 import argparse
 from numpy import array, ceil
 from cyvcf2 import VCF
 import multiprocessing as mp
-import cPickle 
+if sys.version_info.major == 2:
+    import cPickle 
+elif sys.version_info.major == 3:
+    import _pickle as cPickle
 import time
 from collections import Counter
 import random
+from scipy.special import betainc
+from scipy.stats import binom_test as BT
 from scipy.stats.mstats import gmean
 from scipy.stats import combine_pvalues as CPVAL
-from scipy.special import betainc
 from gene_covariate_clustering import covariate_cluster as covc
 from pysam import TabixFile
 import gzip
@@ -25,9 +29,9 @@ Created by Anthony R. Soltis (anthony.soltis.ctr@usuhs.edu)
 #######
 def run(parser,args,version):
 
-    print '--------------------------MUTENRICHER CODING--------------------------'
-    print 'MutEnricher version: %s'%(version)
-  
+    print('--------------------------MUTENRICHER CODING--------------------------')
+    print('MutEnricher version: %s'%(version))
+
     ###############################
     # ARGUMENT AND OPTION PARSING #
     ###############################
@@ -52,6 +56,9 @@ def run(parser,args,version):
         for line in open(list_fn):
             fn,sn = tuple(line.strip().split('\t'))
             if not os.path.isfile(fn) or not os.path.isfile(fn+'.tbi'): parser.error('VCF or index file missing for sample %s.'%(sn))
+            # check valid VCFs
+            try: vtmp = VCF(fn)
+            except: parser.error('%s is not a valid VCF file. Exiting.'%(fn))
 
         # Set VCF data # 
         VCFs,sample_names = [],[]
@@ -61,40 +68,44 @@ def run(parser,args,version):
             sample_names.append(n)
         ns = len(VCFs) # Number of samples
         if len(set(sample_names)) < ns:
-            print 'WARNING: non-unique sample IDs provided in VCF list file! Exiting.'
-            sys.exit()
+            parser.error('WARNING: non-unique sample IDs provided in VCF list file! Exiting.')
 
     # OPTIONS
-    print '\n----------------------------INITIALIZATION----------------------------'
+    print('\n----------------------------INITIALIZATION----------------------------')
     outdir = vargs['outdir']
     os.system('mkdir -p %s'%(outdir))
-    print 'Output directory for results: %s'%(outdir)
+    print('Output directory for results: %s'%(outdir))
     if not outdir.endswith('/'): outdir+='/'
     prefix = vargs['prefix'] + '_'
-    print 'Analysis prefix: %s'%(prefix)
+    print('Analysis prefix: %s'%(prefix))
     nprocessors = min(mp.cpu_count(),vargs['nprocessors'])
+    # count test type
+    stat_type = vargs['stat_type']
+    if stat_type not in ['nmutations','nsamples']:
+        parser.error("--stat-type must be one of either 'nmutations' or 'nsamples'.")
+    print('Statistical testing type: %s'%(stat_type))
     # background variants type
     bg_vtype = vargs['bg_vars_type']
     if bg_vtype not in ['all','silent']: parser.error("--bg-vars-type must be one of either 'all' or 'silent'.")
-    if bg_vtype == 'all': print 'Considering all variants in background rate calculations.'
-    elif bg_vtype == 'silent': print 'Considering only silent variants in background rate calculations.'
+    if bg_vtype == 'all': print('Considering all variants in background rate calculations.')
+    elif bg_vtype == 'silent': print('Considering only silent variants in background rate calculations.')
     # annotation type
     tType = vargs['tType']
     if use_maf: tType = 'maf' # over-ride if MAF being used
-    elif tType not in ['annovar','illumina']:
+    elif tType not in ['annovar-refGene','annovar-knownGene','annovar-ensGene','illumina']:
         if os.path.isfile(tType):
             annrows = set([x.strip().split('\t')[0] for x in open(tType).readlines()])
             if len(annrows) != 2: parser.error('Custom annotations file must contain Gene and Effect as row names')
             elif 'Effect' not in annrows and 'Gene' not in annrows:
                 parser.error('Custom annotations file must only contain Gene and Effect as row names')
-            else: print 'Using non-silent annotation terms from input file %s'%(tType)
+            else: print('Using non-silent annotation terms from input file %s'%(tType))
         else: parser.error('Invalid annotation type!')
-    else: print 'Annotation type: %s'%(tType)
+    else: print('Annotation type: %s'%(tType))
     snps_only = vargs['snps_only']
-    if snps_only: print 'Performing SNPs-only analysis'
-    else: print 'Considering both SNPs and indels in analysis.'
+    if snps_only: print('Performing SNPs-only analysis')
+    else: print('Considering both SNPs and indels in analysis.')
     exome_only = vargs['exome_only']
-    if exome_only: print 'Considering only exonic gene coordinates.'
+    if exome_only: print('Considering only exonic gene coordinates.')
     gene_list = vargs['gene_list']
     genes_to_use = []
     if gene_list != None:
@@ -102,12 +113,12 @@ def run(parser,args,version):
         else:
             genes_to_use = [x.strip() for x in open(gene_list).readlines()]
             genes_to_use = set(genes_to_use)
-            print 'Only considering %d genes from input gene list in analysis.'%(len(genes_to_use))
+            print('Only considering %d genes from input gene list in analysis.'%(len(genes_to_use)))
     # Mappability information
     mapr = vargs['map_regions']
     if mapr != None:
         if not os.path.isfile(mapr) or not os.path.isfile(mapr+'.tbi'): parser.error('Mappability file and/or its index not found!')
-        print 'Loaded mappable regions from input BED file.'
+        print('Loaded mappable regions from input BED file.')
     # covariates data
     use_covars = False
     cov_fn = vargs['cov_fn']
@@ -135,12 +146,12 @@ def run(parser,args,version):
     # check if local background requested
     use_local = False
     if vargs['use_local'] == True and use_covars == True:
-        print '  --use-local selected but covariates provided. Skipping this option and using covariates for backgrounds.'
+        print('  --use-local selected but covariates provided. Skipping this option and using covariates for backgrounds.')
         use_local = False
     elif vargs['use_local'] == True and use_covars == False:
         use_local = True
     if use_local == True and use_maf == True:
-        print '  --use-local option not available when reading from MAF. Using global bacgkround rates instead.'
+        print('  --use-local option not available when reading from MAF. Using global bacgkround rates instead.')
         use_local = False
     # hotspot options
     max_hs_dist = vargs['max_hs_dist']
@@ -176,23 +187,23 @@ def run(parser,args,version):
 
     # initialize parallel pool
     pool = mp.Pool(processes=nprocessors)
-    print 'Set pool with %d processors'%(nprocessors)
+    print('Set pool with %d processors'%(nprocessors))
     
     #############
     # EXECUTION #
     #############
     
     # Load in genes
-    print '\n-----------------------------LOADING GENES----------------------------'
-    print 'Loading GTF...'
+    print('\n-----------------------------LOADING GENES----------------------------')
+    print('Loading GTF...')
     GTF = load_gtf(gtf_fn,genefield,gene_list,genes_to_use)
-    print 'GTF loaded.'
-    print 'Loading genes...'
+    print('GTF loaded.')
+    print('Loading genes...')
     genes = []
     g_index_counter = 0
     
     if use_maf:
-        print ' loading genes from MAF...'
+        print(' loading genes from MAF...')
         if MAF.endswith('.gz'):
             FH = gzip.open(MAF,'rb')
             genes_in_maf = set()
@@ -216,8 +227,8 @@ def run(parser,args,version):
                 else:
                     genes.append(gene)
                     g_index_counter += 1
-        print ' %d genes in MAF were not found in GTF and are being skipped.'%(gnr_count)
-        print '  writing skipped genes to file: %s%s.'%(outdir,'unrecognized_genes.txt')
+        print(' %d genes in MAF were not found in GTF and are being skipped.'%(gnr_count))
+        print('  writing skipped genes to file: %s%s.'%(outdir,'unrecognized_genes.txt'))
         ofgnr = open('%s%s'%(outdir,'unrecognized_genes.txt'),'w')
         for g in genes_not_recognized: ofgnr.writelines(g+'\n')
         ofgnr.close()
@@ -238,7 +249,7 @@ def run(parser,args,version):
         ind = g.index
         name = g.name
         gene2index[name] = ind
-    print 'Loaded %d genes from input GTF file.'%(len(genes))
+    print('Loaded %d genes from input GTF file.'%(len(genes)))
     oflog.writelines('Loaded %d genes from input GTF file.\n'%(len(genes)))
 
     # load nonsilent terms
@@ -246,14 +257,14 @@ def run(parser,args,version):
     
     # Load blacklist if provided
     if bl_fn != None:
-        print '\nLoading blacklist variants file...'
+        print('\nLoading blacklist variants file...')
         blacklist = load_blacklist(bl_fn)
-        print 'Blacklist variants loaded.'
+        print('Blacklist variants loaded.')
     else: blacklist=None
 
     # Gene clustering 
     if use_covars:
-        print '\n-----------------------GENE COVARIATE CLUSTERING-----------------------'
+        print('\n-----------------------GENE COVARIATE CLUSTERING-----------------------')
         time0_cov = time.time()
         gene_clusters = {}
         if not clust_precompute:
@@ -265,7 +276,7 @@ def run(parser,args,version):
                 for g in genes: contigs[g.name] = g.chrom
             gene_clusters = covc(cov_fn,weights_fn,cpath,ap_iters,ap_convits,ap_alg,pool,contigs)
         else:
-            print 'Using pre-computed clusters.'
+            print('Using pre-computed clusters.')
             cpath = vargs['cov_precomp_dir']
             contigs = [x for x in os.listdir(cpath) if os.path.isdir(cpath+x)]
             for c in contigs:
@@ -304,8 +315,8 @@ def run(parser,args,version):
                 small_clust_genes.add(gene2index[g.name])
         if not use_maf:    
             # Calculate local background rate for small cluster genes
-            print '\nCalculating local background rates for %d genes with fewer than %d'%(len(small_clust_genes),min_clust_size)
-            print 'cluster members.'
+            print('\nCalculating local background rates for %d genes with fewer than %d'%(len(small_clust_genes),min_clust_size))
+            print('cluster members.')
             chunk_size_local = 50
             num_chunks_local = int(ceil(len(small_clust_genes)/chunk_size_local))
             chunks_l = []
@@ -322,24 +333,24 @@ def run(parser,args,version):
             del(res)
         else:
             scr = sorted(list(small_clust_genes))
-        print '\nGene covariate clustering analysis complete (%0.2f min.).'%((time.time() - time0_cov)/60)
-    
+        print('\nGene covariate clustering analysis complete (%0.2f min.).'%((time.time() - time0_cov)/60))
+
     pool.close()
     pool = mp.Pool(processes=nprocessors)
 
     # Extract mutation info from VCFs
-    print '\n---------------------------MUTATION COUNTING---------------------------'
+    print('\n---------------------------MUTATION COUNTING---------------------------')
     time0_mutc = time.time()    
     if use_maf:
-        print 'Extracting mutations from MAF input file...'
+        print('Extracting mutations from MAF input file...')
         genes,sample_names = count_mutations_from_maf(MAF,genes,gene2index,terms,tType,snps_only,blacklist)
         ns = len(sample_names) # set number of samples
         oflog.writelines('%d samples detected in input MAF.\n'%(ns))
         
         if use_covars: # Get local bacgkround rates for small cluster size genes after counting
-            print '\nCalculating local background rates for %d genes with fewer than %d'%(len(scr),min_clust_size)
-            print 'cluster members.'
-        
+            print('\nCalculating local background rates for %d genes with fewer than %d'%(len(scr),min_clust_size))
+            print('cluster members.')
+
             min_bg = 1e-8
             for i in scr:
                 bg_len = genes[i].total_length
@@ -355,7 +366,7 @@ def run(parser,args,version):
                     genes[i].local_backgrounds[s] = {}
                     genes[i].local_backgrounds[s]['bg_rate'] = bgr 
     else:
-        print 'Extracting mutations from %d VCF files...'%(len(VCFs))
+        print('Extracting mutations from %d VCF files...'%(len(VCFs)))
         dones,was_done = [],0
         chunk_size = 1000
         num_chunks = int(ceil(len(genes)/chunk_size))
@@ -363,21 +374,21 @@ def run(parser,args,version):
         for i in range(0,num_chunks):
             rr = range(i*chunk_size,min((i+1)*chunk_size,len(genes)))
             chunks.append(genes[rr[0]:rr[-1]+1])
-        print '  Divided %d genes into %d gene chunks.'%(len(genes),num_chunks)
+        print('  Divided %d genes into %d gene chunks.'%(len(genes),num_chunks))
 
         res = [pool.apply_async(count_mutations_from_vcfs,args=(VCFs,sample_names,c,terms,tType,snps_only,blacklist,mapr),callback=dones.append) for c in chunks]
         while len(dones) != num_chunks:
             if len(dones)%10==0 and was_done != len(dones):
                 was_done = len(dones)
-                print '    %d of %d gene chunks complete.'%(len(dones),num_chunks)
+                print('    %d of %d gene chunks complete.'%(len(dones),num_chunks))
         genes = []
         for r in res:
             rget = r.get() 
             for rr in rget: genes.append(rr)
         del(res)
         genes = sorted(genes,key=lambda x:x.index) # re-sort new genes by index
-        print 'Done extracting mutations from VCF files (%0.2f min.).'%((time.time() - time0_mutc)/60)
-    
+        print('Done extracting mutations from VCF files (%0.2f min.).'%((time.time() - time0_mutc)/60))
+
     # log total mutations
     total_nonsilent,total_muts,tot_g_with_nonsilent = 0,0,0
     for g in genes:
@@ -392,12 +403,12 @@ def run(parser,args,version):
     pool = mp.Pool(processes=nprocessors)
      
     # Global background calculations (if necessary)
-    print '\n------------------------BACKGROUND CALCULATIONS------------------------'
+    print('\n------------------------BACKGROUND CALCULATIONS------------------------')
     time0_gbg = time.time()
     
     # Get background rates according to option selected
     if use_covars:
-        print 'Calculating covariate background rates...'
+        print('Calculating covariate background rates...')
         # Get global bg rates to deal with zero rate cases
         global_bg_rates = get_global_bg_rates(genes,sample_names,bg_vtype) 
         minBG = 1.0
@@ -411,7 +422,7 @@ def run(parser,args,version):
             if g.total_nonsilent_mutations == 0: continue
             get_cluster_bg_rates(g,genes,scr,global_bg_rates,bg_vtype) 
     elif use_local:
-        print 'Calculating local gene background rates...'
+        print('Calculating local gene background rates...')
         chunk_size = 100 
         genes_for_local = [g for g in genes if g.total_nonsilent_mutations>0]        
         num_chunks = int(ceil(len(genes_for_local)/chunk_size))
@@ -426,9 +437,9 @@ def run(parser,args,version):
                 assert genes[rr.index].index == rr.index
                 genes[rr.index] = rr
         del(res)
-        print 'Local backgrounds obtained.'
+        print('Local backgrounds obtained.')
     else:
-        print 'Calculating global per-sample gene background rates...'
+        print('Calculating global per-sample gene background rates...')
         global_bg_rates = get_global_bg_rates(genes,sample_names,bg_vtype)
         minBG = 1.0
         for s in global_bg_rates:
@@ -436,11 +447,11 @@ def run(parser,args,version):
             if bg > 0 and bg < minBG: minBG = bg
         for s in global_bg_rates:
             if global_bg_rates[s] == 0: global_bg_rates[s] = minBG
-    print 'Background rates calculated (%0.2f min.).'%((time.time()-time0_gbg)/60)
-    
+    print('Background rates calculated (%0.2f min.).'%((time.time()-time0_gbg)/60))
+
     # find candidate hotspots
-    print '\n-----------------------CANDIDATE HOTSPOT FINDING-----------------------'
-    print 'Finding candidate somatic hotspots in genes...'
+    print('\n-----------------------CANDIDATE HOTSPOT FINDING-----------------------')
+    print('Finding candidate somatic hotspots in genes...')
     time0_hs = time.time()
     tot_g_with_hs, tot_hotspots = 0, 0
     for g in genes:
@@ -450,24 +461,24 @@ def run(parser,args,version):
             tot_g_with_hs += 1
             tot_hotspots += len(g.clusters)
     oflog.writelines('Identified %d candidate hotspots in %d genes for testing.\n'%(tot_hotspots,tot_g_with_hs))
-    print 'Candidate hotspots obtained (%0.2f min.).'%((time.time()-time0_hs)/60)
+    print('Candidate hotspots obtained (%0.2f min.).'%((time.time()-time0_hs)/60))
 
     # Calculate enrichment p-values
-    print '\n--------------------------ENRICHMENT ANALYSES--------------------------'
-    print 'Calculating gene and hotspot enrichment p-values with negative binomial tests...'
-    print '\nPerforming gene enrichment analysis...'
+    print('\n--------------------------ENRICHMENT ANALYSES--------------------------')
+    print('Calculating gene and hotspot enrichment p-values...')
+    print('\nPerforming gene enrichment analysis...')
     time0_enr = time.time()
     if use_covars:
-        print '  Using clustered covariate background rates.'
-        res = [pool.apply_async(get_gene_enrichments_covar,args=(g,ns)) for g in genes if g.total_nonsilent_mutations>0]
+        print('  Using clustered covariate background rates.')
+        res = [pool.apply_async(get_gene_enrichments_covar,args=(g,ns,stat_type)) for g in genes if g.total_nonsilent_mutations>0]
         rget = [r.get() for r in res]
         for r in rget:
             index,pvf = r
             genes[index].gene_pval = pvf
         del(res)
     elif use_local:
-        print '  Using local background rates.'
-        res = [pool.apply_async(get_gene_enrichments_local_bg,args=(g,ns)) for g in genes if g.total_nonsilent_mutations>0]
+        print('  Using local background rates.')
+        res = [pool.apply_async(get_gene_enrichments_local_bg,args=(g,ns,stat_type)) for g in genes if g.total_nonsilent_mutations>0]
         rget = [r.get() for r in res]
         for r in rget:
             index,bgprob,bgtype,pvf = r
@@ -476,8 +487,8 @@ def run(parser,args,version):
             genes[index].gene_pval = pvf
         del(res)
     else:
-        print '  Using global background rates.'
-        res = [pool.apply_async(get_gene_enrichments_global_bg,args=(g,global_bg_rates,ns)) for g in genes if g.total_nonsilent_mutations>0]
+        print('  Using global background rates.')
+        res = [pool.apply_async(get_gene_enrichments_global_bg,args=(g,global_bg_rates,ns,stat_type)) for g in genes if g.total_nonsilent_mutations>0]
         rget = [r.get() for r in res]
         for r in rget:
             index,bgprob,bgtype,pvf = r
@@ -485,10 +496,10 @@ def run(parser,args,version):
             genes[index].enrichment_bg_type = bgtype
             genes[index].gene_pval = pvf
         del(res)
-    print '\nGene enrichment p-values obtained (%0.2f min.).'%((time.time() - time0_enr)/60)
-     
+    print('\nGene enrichment p-values obtained (%0.2f min.).'%((time.time() - time0_enr)/60))
+
     # Write enrichment output
-    print '\nCorrecting p-values and writing enrichment analyses output...'
+    print('\nCorrecting p-values and writing enrichment analyses output...')
     ofr = open(outdir+prefix+'gene_enrichments.txt','w') 
     ofr.writelines('\t'.join(['Gene','coordinates','num_nonsilent','num_bg','full_length','coding_length','bg_type','bg_prob',
                               'gene_pval','FDR_BH','num_samples','nonsilent_position_counts','nonsilent_mutation_counts','samples'])+'\n')
@@ -532,22 +543,22 @@ def run(parser,args,version):
     oflog.writelines('\n%d gene enrichment results reported.\n'%(tot_g_output))
 
     # get hotspot enrichments
-    print '\nCalculating hotspot enrichment p-values with negative binomial tests...'
+    print('\nCalculating hotspot enrichment p-values...')
     time0_hse = time.time()
     if use_covars:
-        print '  Using clustered covariate background rates.'
+        print('  Using clustered covariate background rates.')
         clust_output = []
         for g in genes:
             if len(g.clusters) > 0:
-                oce = get_hotspot_enrichments_covar(g,genes,ns,global_bg_rates,scr,bg_vtype)
+                oce = get_hotspot_enrichments_covar(g,genes,ns,global_bg_rates,scr,bg_vtype,stat_type)
                 clust_output.append(oce) 
     elif use_local:
-        print '  Using local background rates.'
-        clust_results = [pool.apply_async(get_hotspot_enrichments_local,args=(g,ns)) for g in genes if len(g.clusters)>0]
+        print('  Using local background rates.')
+        clust_results = [pool.apply_async(get_hotspot_enrichments_local,args=(g,ns,stat_type)) for g in genes if len(g.clusters)>0]
         clust_output = [p.get() for p in clust_results]
     else:
-        print '  Using global background rates.'
-        clust_results = [pool.apply_async(get_hotspot_enrichments_global,args=(g,global_bg_rates,ns)) for g in genes if len(g.clusters)>0]
+        print('  Using global background rates.')
+        clust_results = [pool.apply_async(get_hotspot_enrichments_global,args=(g,global_bg_rates,ns,stat_type)) for g in genes if len(g.clusters)>0]
         clust_output = [p.get() for p in clust_results]
     clust_out_adjust = []
     for co in clust_output: 
@@ -559,8 +570,8 @@ def run(parser,args,version):
     for cr in cluster_enrichments: pvals.append(cr[-5])
     fdrs = fdr_BH(array(pvals))
     for i,cr in enumerate(cluster_enrichments): cr.insert(8,fdrs[i])
-    print '\nHotspot enrichment p-values obtained (%0.2f min.).'%((time.time() - time0_hse)/60)
-     
+    print('\nHotspot enrichment p-values obtained (%0.2f min.).'%((time.time() - time0_hse)/60))
+
     # Assign hotspots to their originating genes
     for i,cr in enumerate(cluster_enrichments):
         gindex = gene2index[cr[0]]
@@ -569,7 +580,7 @@ def run(parser,args,version):
         gene.cluster_enrichments.append(cr)
    
     # Write hotspot enrichment output 
-    print 'Writing hotspot enrichment analysis output...'
+    print('Writing hotspot enrichment analysis output...')
     of = open(outdir+prefix+'hotspot.txt','w')
     of.writelines('\t'.join(['Gene','hotpsot','num_mutations','hotspot_length','effective_length',
                              'bg_type','bg_prob','pval','FDR_BH','num_samples','position_counts','mutation_counts','samples'])+'\n')
@@ -580,7 +591,7 @@ def run(parser,args,version):
     oflog.writelines('%d gene hotspot enrichment results reported.\n'%(len(cluster_enrichments)))
 
     # Create combined gene and hotspot output
-    print '\nCreating combined gene and hotspot enrichment output...'
+    print('\nCreating combined gene and hotspot enrichment output...')
     # compute Fisher p-values
     minFisher = 2.2250738585072014e-308
     for g in genes:
@@ -645,14 +656,14 @@ def run(parser,args,version):
     ofF.close()
     
     # Save genes analysis as python pickle object
-    cPickle.dump(genes,open(outdir+prefix+'gene_data.pkl','w'))
+    cPickle.dump(genes,open(outdir+prefix+'gene_data.pkl','wb'))
 
     # close pool, log file
     pool.close()
     oflog.close()
 
     # Finish statement
-    print '\nAnalysis finished in %0.2f minutes.\n'%((time.time() - time0_master)/60)
+    print('\nAnalysis finished in %0.2f minutes.\n'%((time.time() - time0_master)/60))
 
 ############
 # END MAIN #
@@ -668,7 +679,7 @@ def load_gtf(gtf,genefield,gene_list,genes_to_use):
     genes = {}
     bad_genes = set() # list for problematic genes
     
-    if gtf.endswith('.gz'): FH = gzip.open(gtf,'rb')
+    if gtf.endswith('.gz'): FH = gzip.open(gtf,'rt')
     else: FH = open(gtf)
     
     for line in FH:
@@ -709,7 +720,7 @@ def load_gtf(gtf,genefield,gene_list,genes_to_use):
             genes[gene_id]['CDS'].append(reg)
             
     # delete problematic genes
-    print '  Deleting %d genes annotated to multiple chromosomes.'%(len(bad_genes))
+    print('  Deleting %d genes annotated to multiple chromosomes.'%(len(bad_genes)))
     for g in bad_genes:
         del(genes[g])
 
@@ -758,7 +769,7 @@ def load_nonsilent_terms(tType):
                  "splice_acceptor_variant","splice_donor_variant","inframe_insertion",
                  "stop_lost","start_lost","frameshift_variant","protein_altering_variant"]
         return terms
-    elif tType == 'annovar':
+    elif tType.startswith('annovar'):
         terms = ['frameshift_deletion','frameshift_insertion','frameshift_substitution',
                  'nonframeshift_deletion','nonframeshift_insertion','nonframeshift_substitution',
                  'nonsynonymous_SNV','stopgain','stoploss']
@@ -787,12 +798,21 @@ def count_mutations_from_vcfs(VCFs,names,genes,terms,tType,snps_only,blacklist=N
     '''
                     
     # Get annotation term types
-    anno_val,gname_val = '',''
+    anno_val, gname_val, func_val = '','',''
     if tType == 'illumina':
-        anno_val,gname_val = 'CSQT','CSQT'
-    elif tType == 'annovar':
+        anno_val, gname_val = 'CSQT', 'CSQT'
+    elif tType == 'annovar-refGene':
         anno_val = 'ExonicFunc.refGene'
         gname_val = 'Gene.refGene'
+        func_val = 'Func.refGene'
+    elif tType == 'annovar-knownGene':
+        anno_val = 'ExonicFunc.knownGene'
+        gname_val = 'Gene.knownGene'
+        func_val = 'Func.knownGene'
+    elif tType == 'annovar-ensGene':
+        anno_val = 'ExonicFunc.ensGene'
+        gname_val = 'Gene.ensGene'
+        func_val = 'Func.ensGene'
 
     # count vars
     for j,vcf_f in enumerate(VCFs):
@@ -832,13 +852,13 @@ def count_mutations_from_vcfs(VCFs,names,genes,terms,tType,snps_only,blacklist=N
                     
                         # check if nonsilent
                         nonsilent = False
-                        if tType in ['illumina','annovar']:
+                        if tType in ['illumina','annovar-refGene','annovar-knownGene','annovar-ensGene']:
                             try:
                                 found_term = False
                                 for term in terms: 
                                     if term in v.INFO[anno_val]: found_term = True
-                                if tType == 'annovar': 
-                                    if 'splicing' in v.INFO['Func.refGene']: found_term = True
+                                if tType.startswith('annovar'):
+                                    if 'splicing' in v.INFO[func_val]: found_term = True
                                 if found_term:
                                     for msinfo in v.INFO[gname_val].split(','):
                                         if tType == 'illumina':
@@ -924,7 +944,7 @@ def count_mutations_from_maf(MAF,genes,gene2index,terms,tType,snps_only,blacklis
         try:
             gene,chrom,mstart,mstop,varclass,vartype,ref,alt,name = l[0],l[4],int(l[5]),int(l[6]),l[8],l[9],l[10],l[12],l[15]
         except:
-            print 'Could not parse line in MAF: %s'%(line)
+            print('Could not parse line in MAF: %s'%(line))
             sys.exit()
         if gene not in gene2index: continue
         if not chrom.startswith('chr'): chrom = 'chr'+chrom
@@ -945,8 +965,8 @@ def count_mutations_from_maf(MAF,genes,gene2index,terms,tType,snps_only,blacklis
  
         if nonsilent == True:
             if pos < gstart or pos > gstop:
-                print ' %s var %s %s not in gene limits'%(gene,chrom,var_info)
-                print gchrom,gstart,gstop
+                print(' %s var %s %s not in gene limits'%(gene,chrom,var_info))
+                print(gchrom,gstart,gstop)
                 continue
        
         # Add mutation information
@@ -1015,12 +1035,21 @@ def get_local_background(genes,VCFs,names,terms,tType,snps_only,blacklist=None,f
         wins = [100e3,500e3,1e6]
 
     # Get annotation term types
-    anno_val,gname_val = '',''
+    anno_val, gname_val, func_val = '','',''
     if tType == 'illumina':
-        anno_val,gname_val = 'CSQT','CSQT'
-    elif tType == 'annovar':
+        anno_val, gname_val = 'CSQT', 'CSQT'
+    elif tType == 'annovar-refGene':
         anno_val = 'ExonicFunc.refGene'
         gname_val = 'Gene.refGene'
+        func_val = 'Func.refGene'
+    elif tType == 'annovar-knownGene':
+        anno_val = 'ExonicFunc.knownGene'
+        gname_val = 'Gene.knownGene'
+        func_val = 'Func.knownGene'
+    elif tType == 'annovar-ensGene':
+        anno_val = 'ExonicFunc.ensGene'
+        gname_val = 'Gene.ensGene'
+        func_val = 'Func.ensGene'
 
     # Loop over VCFs
     for j,vcf_f in enumerate(VCFs):
@@ -1104,13 +1133,13 @@ def get_local_background(genes,VCFs,names,terms,tType,snps_only,blacklist=None,f
                                 elif bg_vtype == 'silent':
                                     # check if nonsilent
                                     nonsilent = False
-                                    if tType in ['illumina','annovar']:
+                                    if tType in ['illumina','annovar-refGene','annovar-knownGene','annovar-ensGene']:
                                         try:
                                             found_term = False
                                             for term in terms: 
                                                 if term in v.INFO[anno_val]: found_term = True
-                                            if tType == 'annovar': 
-                                                if 'splicing' in v.INFO['Func.refGene']: found_term = True
+                                            if tType.startswith('annovar'):
+                                                if 'splicing' in v.INFO[func_val]: found_term = True
                                             if found_term:
                                                 for msinfo in v.INFO[gname_val].split(','):
                                                     if tType == 'illumina':
@@ -1200,84 +1229,122 @@ def get_cluster_bg_rates(g,genes,scr,global_bg,bg_vtype):
     bgpf = gmean(bgpf_l) # geometric mean
     g.background_prob = bgpf
 
-def get_gene_enrichments_global_bg(g,bg_rates,ns):
+def get_gene_enrichments_global_bg(g,bg_rates,ns,stat_type):
     '''
     Function for determining full gene enrichments using global background rates.
     Return tuple data.
     '''
     # calculate p-value for full region
     xf = g.coding_length * ns
-    kf = g.total_nonsilent_mutations #- 1
+    kf = g.total_nonsilent_mutations 
     bg = []
     samples = g.mutations_by_sample.keys()
+    nmut = 0
     for s in samples: 
         if s not in g.mutations_by_sample: continue
         if len(g.mutations_by_sample[s]['nonsilent']) == 0: continue # take only samples with at least one non-silent mutation
         bg.append(bg_rates[s])
+        nmut += 1
     bg = gmean(bg) # take geometric mean
     
     # Calculate full region p-value
-    try: 
-        pvf = betainc(kf,xf-kf+1,bg)
-        pvf = max(2.2250738585072014e-308, pvf)
-    except:
-        print '  error at gene %s with length: %d, num mutations: %d, and bg: %f'%(g.name,g.coding_length,kf,bg)
-        pvf = 1
-   
+    if stat_type == 'nmutations':
+        # compute with negative binomial test
+        try: 
+            pvf = betainc(kf,xf-kf+1,bg)
+            pvf = max(2.2250738585072014e-308, pvf)
+        except:
+            print('  error at gene %s with length: %d, k: %d, and bg: %f'%(g.name,g.coding_length,kf,bg))
+            pvf = 1
+    elif stat_type == 'nsamples':
+        # compute with binomial test
+        pi = 1 - pow(1 - bg, g.coding_length) # pi = 1 - (1 - bg)^L
+        try:
+            pvf = BT(nmut, ns, pi, alternative='greater')
+            pvf = max(2.2250738585072014e-308, pvf)
+        except:
+            print('  error at gene %s with length: %d, k: %d, and bg: %f'%(g.name,g.coding_length,kf,bg))
+            pvf = 1
+
     # Return tuple
     return (g.index,bg,'global',pvf)
 
-def get_gene_enrichments_local_bg(g,ns):
+def get_gene_enrichments_local_bg(g,ns,stat_type):
     '''
     Function for determining full gene enrichments using local bacgkround rates.
     Return tuple data.
     '''
     # calculate p-value for full region
     xf = g.coding_length * ns
-    kf = g.total_nonsilent_mutations #- 1
+    kf = g.total_nonsilent_mutations
     bg = []
     samples = g.local_backgrounds.keys()
+    nmut = 0
     for s in samples: 
         if s not in g.mutations_by_sample: continue
         if len(g.mutations_by_sample[s]['nonsilent']) == 0: continue # take only samples with at least one non-silent mutation
         bg.append(g.local_backgrounds[s]['bg_rate'])
+        nmut += 1
     bg = gmean(bg) # take geometric mean
     
     # Calculate full region p-value
-    try: 
-        pvf = betainc(kf,xf-kf+1,bg)
-        pvf = max(2.2250738585072014e-308, pvf)
-    except:
-        print '  error at gene %s with length: %d, num mutations: %d, and bg: %f'%(g.name,g.coding_length,kf,bg)
-        pvf = 1
+    if stat_type == 'nmutations':
+        # compute with negative binomial test
+        try: 
+            pvf = betainc(kf,xf-kf+1,bg)
+            pvf = max(2.2250738585072014e-308, pvf)
+        except:
+            print('  error at gene %s with length: %d, k: %d, and bg: %f'%(g.name,g.coding_length,kf,bg))
+            pvf = 1
+    elif stat_type == 'nsamples':
+        # compute with binomial test
+        pi = 1 - pow(1 - bg, g.coding_length) # pi = 1 - (1 - bg)^L
+        try:
+            pvf = BT(nmut, ns, pi, alternative='greater')
+            pvf = max(2.2250738585072014e-308, pvf)
+        except:
+            print('  error at gene %s with length: %d, k: %d, and bg: %f'%(g.name,g.coding_length,kf,bg))
+            pvf = 1
 
     # Return tuple
     return (g.index,bg,'local',pvf)
 
-def get_gene_enrichments_covar(g,ns):
+def get_gene_enrichments_covar(g,ns,stat_type):
     '''
     Function for determining gene enrichments.
     Return tuple data.
     '''
     # calculate p-value for full region
     xf = g.coding_length * ns
-    kf = g.total_nonsilent_mutations #- 1
+    kf = g.total_nonsilent_mutations
     bg = g.background_prob
-
+    nmut = len([x for x in g.mutations_by_sample if len(g.mutations_by_sample[x]['nonsilent'])>0])
+ 
     # Calculate full region p-value
-    try:
-        pvf = betainc(kf,xf-kf+1,bg)
-        pvf = max(2.2250738585072014e-308, pvf)
-    except:
-        print '  error at gene %s with length: %d, num mutations: %d, and bg: %f'%(g.name,g.coding_length,kf,bg)
-        pvf = 1
-    
+    if stat_type == 'nmutations':
+        # compute with negative binomial test
+        try: 
+            pvf = betainc(kf,xf-kf+1,bg)
+            pvf = max(2.2250738585072014e-308, pvf)
+        except:
+            print('  error at gene %s with length: %d, k: %d, and bg: %f'%(g.name,g.coding_length,kf,bg))
+            pvf = 1
+    elif stat_type == 'nsamples':
+        # compute with binomial test
+        pi = 1 - pow(1 - bg, g.coding_length) # pi = 1 - (1 - bg)^L
+        try:
+            pvf = BT(nmut, ns, pi, alternative='greater')
+            pvf = max(2.2250738585072014e-308, pvf)
+        except:
+            print('  error at gene %s with length: %d, k: %d, and bg: %f'%(g.name,g.coding_length,kf,bg))
+            pvf = 1
+
     # Return tuple
     return (g.index,pvf)
 
-def get_hotspot_enrichments_covar(g,genes,ns,global_bg,scr,bg_vtype):
+def get_hotspot_enrichments_covar(g,genes,ns,global_bg,scr,bg_vtype,stat_type):
     '''
-    Compute hotspot enrichment p-values using negative binomial test with covariate cluster background rates.
+    Compute hotspot enrichment p-values  with covariate cluster background rates.
     '''
     # initialize output
     enrich = []
@@ -1289,11 +1356,12 @@ def get_hotspot_enrichments_covar(g,genes,ns,global_bg,scr,bg_vtype):
             # Cluster info
             clust_name = g.clusters[clust]['name']
 
-            # data for NB test 
-            k = g.clusters[clust]['count']
+            # data for NB test  
             c_len = g.clusters[clust]['length']
             x = c_len * ns # cluster length times number of samples
+            k = g.clusters[clust]['count']
             cs = g.clusters[clust]['samples']
+            nmut = len(cs)
             
             # Get background            
             bgp_l,bg_type = [],''
@@ -1312,8 +1380,15 @@ def get_hotspot_enrichments_covar(g,genes,ns,global_bg,scr,bg_vtype):
             bgp = gmean(bgp_l) # geometric mean
     
             # Calculate p-values
-            pv = betainc(k,x-k+1,bgp) 
-            pv = max(2.2250738585072014e-308, pv)
+            if stat_type == 'nmutations':
+                # use negative binomial test
+                pv = betainc(k,x-k+1,bgp) 
+                pv = max(2.2250738585072014e-308, pv)
+            elif stat_type == 'nsamples':
+                # use binomial test
+                pi = 1 - pow(1 - bgp, c_len) # pi = 1 - (1 - bg)^Len_hs
+                pv = BT(nmut, ns, pi, alternative='greater')
+                pv = max(2.2250738585072014e-308, pv)
 
             # Get counts for positions and mutations
             counter = Counter(g.clusters[clust]['positions'])
@@ -1334,16 +1409,16 @@ def get_hotspot_enrichments_covar(g,genes,ns,global_bg,scr,bg_vtype):
             count_m = ';'.join(count_m)
 
             # Output info
-            ol = [g.name,clust_name,k,c_len,x,bg_type,bgp,pv,len(cs),count_s,count_m,';'.join(sorted(list(cs)))]
+            ol = [g.name,clust_name,k,c_len,x,bg_type,bgp,pv,nmut,count_s,count_m,';'.join(sorted(list(cs)))]
             enrich.append(ol)
         
         # return
         if len(enrich) > 0:
             return enrich
 
-def get_hotspot_enrichments_local(g,ns):
+def get_hotspot_enrichments_local(g,ns,stat_type):
     '''
-    Compute hotspot enrichment p-values using negative binomial test with local background rates.
+    Compute hotspot enrichment p-values with local background rates.
     '''
     # initialize output
     enrich = []
@@ -1355,17 +1430,27 @@ def get_hotspot_enrichments_local(g,ns):
             clust_name = g.clusters[clust]['name']
             
             # data for NB test 
-            k = g.clusters[clust]['count']
             c_len = g.clusters[clust]['length']
             x = c_len * ns # cluster length times number of samples
+            k = g.clusters[clust]['count']
             cs = g.clusters[clust]['samples']
-                    
+            nmut = len(cs)
+       
             bgp_l = []
             for s in cs: bgp_l.append(g.local_backgrounds[s]['bg_rate'])
             bgp = gmean(bgp_l) # geometric mean
-            pv = betainc(k,x-k+1,bgp)
-            pv = max(2.2250738585072014e-308, pv)
             
+            # Calculate p-values
+            if stat_type == 'nmutations':
+                # use negative binomial test
+                pv = betainc(k,x-k+1,bgp) 
+                pv = max(2.2250738585072014e-308, pv)
+            elif stat_type == 'nsamples':
+                # use binomial test
+                pi = 1 - pow(1 - bgp, c_len) # pi = 1 - (1 - bg)^Len_hs
+                pv = BT(nmut, ns, pi, alternative='greater')
+                pv = max(2.2250738585072014e-308, pv)
+
             # Get counts for positions and mutations
             counter = Counter(g.clusters[clust]['positions'])
             count_s = []
@@ -1385,16 +1470,16 @@ def get_hotspot_enrichments_local(g,ns):
             count_m = ';'.join(count_m)
   
             # Output info
-            ol = [g.name,clust_name,k,c_len,x,bg_type,bgp,pv,len(cs),count_s,count_m,';'.join(sorted(list(cs)))]
+            ol = [g.name,clust_name,k,c_len,x,bg_type,bgp,pv,nmut,count_s,count_m,';'.join(sorted(list(cs)))]
             enrich.append(ol)
         
         # return
         if len(enrich) > 0:
             return enrich
 
-def get_hotspot_enrichments_global(g,global_bg_rates,ns):
+def get_hotspot_enrichments_global(g,global_bg_rates,ns,stat_type):
     '''
-    Compute hotspot enrichment p-values using negative binomial test with global background rates.
+    Compute hotspot enrichment p-values with global background rates.
     '''
     # initialize output
     enrich = []
@@ -1406,16 +1491,27 @@ def get_hotspot_enrichments_global(g,global_bg_rates,ns):
             clust_name = g.clusters[clust]['name']
 
             # data for NB test 
-            k = g.clusters[clust]['count']
             c_len = g.clusters[clust]['length']
             x = c_len * ns # cluster length times number of samples
+            k = g.clusters[clust]['count']
             cs = g.clusters[clust]['samples']
+            nmut = len(cs)
+           
             bgp_l = []
             for s in cs: bgp_l.append(global_bg_rates[s])
             bgp = gmean(bgp_l) # geometric mean
-            pv = betainc(k,x-k+1,bgp)
-            pv = max(2.2250738585072014e-308, pv)
             
+            # Calculate p-values
+            if stat_type == 'nmutations':
+                # use negative binomial test
+                pv = betainc(k,x-k+1,bgp) 
+                pv = max(2.2250738585072014e-308, pv)
+            elif stat_type == 'nsamples':
+                # use binomial test
+                pi = 1 - pow(1 - bgp, c_len) # pi = 1 - (1 - bg)^Len_hs
+                pv = BT(nmut, ns, pi, alternative='greater')
+                pv = max(2.2250738585072014e-308, pv)
+           
             # Get counts for positions and mutations
             counter = Counter(g.clusters[clust]['positions'])
             count_s = []
@@ -1435,7 +1531,7 @@ def get_hotspot_enrichments_global(g,global_bg_rates,ns):
             count_m = ';'.join(count_m)
   
             # Output info
-            ol = [g.name,clust_name,k,c_len,x,bg_type,bgp,pv,len(cs),count_s,count_m,';'.join(sorted(list(cs)))]
+            ol = [g.name,clust_name,k,c_len,x,bg_type,bgp,pv,nmut,count_s,count_m,';'.join(sorted(list(cs)))]
             enrich.append(ol)
         
         # return
@@ -1473,7 +1569,7 @@ class Gene:
         
         # other gene info
         self.chrom = gene['chrom']
-        self.strand = gene['strand']
+        self.strand = gene['strand'] 
         self.start = self.exons[0][0]
         self.stop = self.exons[-1][1]
         

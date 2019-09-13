@@ -7,7 +7,7 @@ Institution: Uniformed Services University of the Health Sciences, Bethesda, MD
 
 License: MIT License, see [License](https://github.com/asoltis/MutEnricher/blob/master/LICENSE.txt)
 
-Version: 1.1.3
+Version: 1.2.0
 
 Introduction:
 ---------------
@@ -39,7 +39,7 @@ Info and User Guides:
 Installation:
 ---------------
 
-See [Requirements and Installation](https://github.com/asoltis/MutEnricher/wiki#requirements-and-installation) section on Wiki.
+See [Installation Guide](https://github.com/asoltis/MutEnricher/wiki/Installation-Guide) section on Wiki.
 
 Additional utilities
 ----------------------
@@ -122,6 +122,17 @@ Files/folders contained in example_data:
 
 # Change log #
 ---------------
+
+09-13-2019
+----------
+- Version 1.2.0
+- Major changes:
+    - Code updated for compatibility with Python 3.
+    - Included --stat-type option to select between original negative binomial test based on mutation counts (nmutations, default) or
+      binomial test on number of mutated samples (nsamples).
+- Minor changes:
+    - Updated --anno-type preset options to better reflect various ANNOVAR gene annotations. 
+    - Deprecated --repliseq-fns option in utilities code and updated to -i/--interval-files option
 
 03-25-2019
 ----------

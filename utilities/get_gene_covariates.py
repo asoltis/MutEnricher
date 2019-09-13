@@ -1,4 +1,4 @@
-from __future__ import division
+from __future__ import division, print_function
 import sys,os
 import numpy as np
 import argparse
@@ -32,18 +32,28 @@ def main():
                         Each table file must be tab-delimited with one column header. First column is reserved for gene name, remaining are \
                         for information. Names for each covariate are read from corresponding header line. Provided values are not adjusted and \
                         genes in GTF with no information for one or more covariates are set to "NA".')
-    parser.add_argument('--repliseq-fns',type=str,default=None,dest='repliseq_fns',
-                        help='Provide a file with paths to RepliSeq data (for replication timing information). This file should be tab-delimited \
-                        with no header in the format: file_path sampleID. The file paths should point to bed/bedgraph files compressed with \
-                        bgzip and indexed with tabix. This program will extract a replication timing value from each file for each gene by \
-                        scanning overlapping intervals in the files. For multiple intersecting intervals, the average value is taken. If no data \
-                        exists in the immediate gene vicinity, wider windows around the gene are scanned until a value is determined; otherwise, \
-                        "None" is reported.')
+    parser.add_argument('-i','--interval-files',default=None,dest='interval_fns',
+                        help='Provide a text file listing paths to bgzip compressed and tabix-indexed interval files in BedGraph format. \
+                        This file should be tab-delimited with no header in the format: file_path interval_dataset_name. This program will \
+                        extract intervals from these files for each feature (gene) and report the average value (in cases of multiple overlaps)\
+                        from these intervals. If no immediate overlapping intervals are found, a wider search window is scanned to find a \
+                        proximal interval; if one is not found after this broader search, "None" is reported.\
+                        NOTE - numerical score data (e.g. 4th column of BedGraph files) is expected here.')
     parser.add_argument('-p','--processors',type=int,default=1,dest='nprocessors',help='Set number of processors for parallel runs.')
     parser.add_argument('-g','--gene-list',type=str,default=None,dest='gene_list',
                         help='Provide list of genes to which analysis should be restricted (one gene per-line in text file). \
                         Analysis will only considers genes from GTF file that are present in this list. \
                         Default behavior is to query all coding genes present in input GTF.')
+
+    parser.add_argument('--repliseq-fns',type=str,default=None,dest='repliseq_fns',
+                        help='DEPRECATED - use -i/--interval-files option instead.\
+                        Provide a file with paths to RepliSeq data (for replication timing information). This file should be tab-delimited \
+                        with no header in the format: file_path sampleID. The file paths should point to bed/bedgraph files compressed with \
+                        bgzip and indexed with tabix. This program will extract a replication timing value from each file for each gene by \
+                        scanning overlapping intervals in the files. For multiple intersecting intervals, the average value is taken. If no data \
+                        exists in the immediate gene vicinity, wider windows around the gene are scanned until a value is determined; otherwise, \
+                        "None" is reported.')
+    
 
     # PARSE INPUTS #
     args = parser.parse_args()
@@ -57,7 +67,7 @@ def main():
     genefield = vargs['genefield']
     ofn = vargs['outname']
     tables = vargs['tables']
-    repliseq_fns = vargs['repliseq_fns']
+    interval_fns = vargs['interval_fns']
     nprocess = vargs['nprocessors']
     gene_list = vargs['gene_list']
     genes_to_use = []
@@ -66,30 +76,37 @@ def main():
         else:
             genes_to_use = [x.strip() for x in open(gene_list).readlines()]
             genes_to_use = set(genes_to_use)
-            print 'Only considering %d genes from input gene list in analysis.'%(len(genes_to_use))
-    
+            print('Only considering %d genes from input gene list in analysis.'%(len(genes_to_use)))
+    repliseq_fns = vargs['repliseq_fns']
+    if repliseq_fns != None:
+        if interval_fns == None:
+            print('--repliseq-fns option is deprecated, setting -i option to this input.')
+            interval_fns = repliseq_fns
+        else:
+            parser.error('Using deprecated --repliseq-fns option with -i/--interval-files option is not permitted. Exiting.') 
+
     # check tables
     if len(tables) > 0:
         for t in tables:
             if not os.path.isfile(t): parser.error('Table file not found: %s'%(t))
 
-    # get repliseq files
-    rs_fns = []
-    if repliseq_fns != None:
-        for x in open(repliseq_fns).readlines():
+    # get interval files
+    int_fns = []
+    if interval_fns != None:
+        for x in open(interval_fns).readlines():
             x = x.strip('\n').split('\t')
             rsfn,rsn = x[0],x[1]
             if not os.path.isfile(rsfn): parser.error('File for %s not found!'%(rsn))
-            rs_fns.append([x[0],x[1]])
+            int_fns.append([x[0],x[1]])
         
     # set up multiprocessing pool
     pool = mp.Pool(processes=nprocess) 
 
     # Load genes 
-    print 'Loading GTF...'
+    print('Loading GTF...')
     GTF = load_gtf(gtf_fn,genefield,gene_list,genes_to_use)
-    print 'GTF loaded.'
-    print 'Loading genes...'
+    print('GTF loaded.')
+    print('Loading genes...')
     genes = []
     g_index_counter = 0
     for g in sorted(GTF.keys()):
@@ -104,7 +121,7 @@ def main():
         ind = g.index
         name = g.name
         gene2index[name] = ind
-    print 'Loaded %d genes from input GTF file.'%(len(genes))
+    print('Loaded %d genes from input GTF file.'%(len(genes)))
     
     # load table data
     if len(tables) > 0:
@@ -124,8 +141,8 @@ def main():
             else: 
                 for s in samples: g.expression[s] = 'NA'
     
-    # If replication timing data provided
-    if len(rs_fns) > 0:
+    # If interval data is provided
+    if len(int_fns) > 0:
         dones,was_done = [],0
         chunk_size = 1000
         num_chunks = int(ceil(len(genes)/chunk_size))
@@ -133,12 +150,12 @@ def main():
         for i in range(0,num_chunks):
             rr = range(i*chunk_size,min((i+1)*chunk_size,len(genes)))
             chunks.append(genes[rr[0]:rr[-1]+1])
-        print '  Divided %d genes into %d gene chunks.'%(len(genes),num_chunks)
-        res = [pool.apply_async(get_replication_timing_data,args=(c,rs_fns),callback=dones.append) for c in chunks]
+        print('  Divided %d genes into %d gene chunks.'%(len(genes),num_chunks))
+        res = [pool.apply_async(get_interval_data,args=(c,int_fns),callback=dones.append) for c in chunks]
         while len(dones) != num_chunks:
             if len(dones)%10==0 and was_done != len(dones):
                 was_done = len(dones)
-                print '    %d of %d gene chunks complete.'%(len(dones),num_chunks)
+                print('    %d of %d gene chunks complete.'%(len(dones),num_chunks))
         genes = []
         for gene in res:
             gget = gene.get()
@@ -149,7 +166,7 @@ def main():
     header = ['Gene','full_length','coding_length','GC','CpG']
     if len(tables)>0:
         for s in EXP['samples']: header.append('%s'%(s))
-    for rs in rs_fns: header.append(rs[1])
+    for ints in int_fns: header.append(ints[1])
     of.writelines('\t'.join(header)+'\n')
     for g in genes:
         tot_len = np.log2(g.total_length * 1e-3) # log2 of length in kb
@@ -157,11 +174,11 @@ def main():
         ostr = [g.name,str(tot_len),str(cod_len),'%0.3f'%(g.GC),'%0.3f'%(g.CpG)]
         if len(tables)>0:
             for s in EXP['samples']: ostr.append('%s'%(g.expression[s]))
-        for rs in rs_fns:
-            samp = rs[1]
-            if g.repTiming[samp] != None:
-                ostr.append('%0.3f'%(g.repTiming[samp]))
-            else: ostr.append(str(g.repTiming[samp]))
+        for ints in int_fns:
+            samp = ints[1]
+            if g.intervalData[samp] != None:
+                ostr.append('%0.3f'%(g.intervalData[samp]))
+            else: ostr.append(str(g.intervalData[samp]))
         ostr = '\t'.join(ostr)+'\n'
         of.writelines(ostr)
     of.close()
@@ -176,7 +193,7 @@ def load_gtf(gtf,genefield,gene_list,genes_to_use):
     genes = {}
     bad_genes = set() # list for problematic genes
 
-    if gtf.endswith('.gz'): FH = gzip.open(gtf, 'rb')
+    if gtf.endswith('.gz'): FH = gzip.open(gtf, 'rt')
     else: FH = open(gtf)
 
     for line in FH:
@@ -218,7 +235,7 @@ def load_gtf(gtf,genefield,gene_list,genes_to_use):
             genes[gene_id]['CDS'].append(reg)
 
     # delete problematic genes
-    print '  Deleting %d genes annotated to multiple chromosomes.'%(len(bad_genes))
+    print('  Deleting %d genes annotated to multiple chromosomes.'%(len(bad_genes)))
     for g in bad_genes:
         del(genes[g])
 
@@ -278,11 +295,11 @@ def merge_list(exlist):
                 merged.append(overlapper)
     return merged
 
-def get_replication_timing_data(genes,RT):
+def get_interval_data(genes,INT):
     '''
-    Get replication timing data for gene from input files in rs_fns. 
+    Get interval data for gene from input files in int_fns. 
     '''
-    for fn,name in RT:
+    for fn,name in INT:
         tb = TabixFile(fn)
 
         for g in genes:
@@ -298,14 +315,14 @@ def get_replication_timing_data(genes,RT):
             else: gstr = '%s:%d-%d'%(g.chrom,g.start,g.stop)
 
             # Call to tabix to get dat from bedGraph 
-            rt_genes = tb.fetch(gstr)
-            repTime = []
-            for rtr in rt_genes:
-                if rtr == '': continue
-                rtr = rtr.split('\t')
-                repTime.append(float(rtr[-1]))
-            if len(repTime)>0:
-                g.repTiming[name] = np.mean(repTime)
+            it_genes = tb.fetch(gstr)
+            intData = []
+            for itr in it_genes:
+                if itr == '': continue
+                itr = itr.split('\t')
+                intData.append(float(itr[-1]))
+            if len(intData)>0:
+                g.intervalData[name] = np.mean(intData)
                 continue
             else: 
                 # Extend search if value not found
@@ -319,18 +336,18 @@ def get_replication_timing_data(genes,RT):
                     stop = midp + round(e/2)
                     gstr = '%s:%d-%d'%(g.chrom,start,stop)
                     
-                    rt_genes = tb.fetch(gstr)
-                    for rtr in rt_genes:
-                        if rtr == '': continue
-                        rtr = rtr.split('\t')
-                        repTime.append(float(rtr[-1]))
+                    it_genes = tb.fetch(gstr)
+                    for itr in it_genes:
+                        if itr == '': continue
+                        itr = itr.split('\t')
+                        intData.append(float(itr[-1]))
                         found = True
                     if found == True:
-                        g.repTiming[name] = np.mean(repTime)
+                        g.intervalData[name] = np.mean(intData)
                         break
                 
                 if found == False:
-                    g.repTiming[name] = None
+                    g.intervalData[name] = None
 
     return genes
 
@@ -381,7 +398,7 @@ class Gene:
         self.GC = None
         self.CpG = None
         self.expression = {}
-        self.repTiming = {}
+        self.intervalData = {}
 
     def get_sequence(self,genome):
         ''' Get coding sequence. '''

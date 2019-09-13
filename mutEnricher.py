@@ -21,7 +21,7 @@ def main():
     usage = 'python %(prog)s'
     description = 'Perform somatic coding or non-coding analysis on sets of somatic mutation calls.'
     epilog = 'For command line options of sub-commands, type: %(prog)s COMMAND -h'
-    version = "1.1.3"
+    version = "1.2.0"
 
     # set up parser and sub-parsers
     parser = argparse.ArgumentParser(usage=usage,description=description,epilog=epilog,formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -71,6 +71,13 @@ def add_coding_parser(subparsers):
                                Analysis will only considers genes from GTF file that are present in this list. \
                                Default behavior is to query all coding genes present in input GTF.')
     
+    coding_parser.add_argument('--stat-type',dest='stat_type',type=str,default='nmutations',
+                               help="Select the stype of statistical testing to perform. Options are:\
+                               1) 'numutations' (default), which uses the negative binomial distribution to compute the significance of \
+                               the number of non-silent mutations 'k' in a gene of coding length 'x' against background mutation rate 'p', or \
+                               2) 'nsamples', which uses the binomial distribution to compute the significance of the number of samples \
+                               containing a non-silent somatic mutation ('n') among 'N' total samples against background mutation rate 'p'.")
+    
     coding_parser.add_argument('--bg-vars-type',dest='bg_vars_type',type=str,default='all',
                         help="Select which variants should be counted in background rate calculations. Choices are: 'all' and 'silent'. \
                         If 'all' is selected, all variants (silent + non-silent) are counted in background calculations. If 'silent' is \
@@ -85,14 +92,16 @@ def add_coding_parser(subparsers):
                         help='If using exome-based data, choose this flag to only consider exonic coordinates of genes for background estimates. \
                         Default behavior is to consider full gene length (exons + introns) in calculations.')
     
-    coding_parser.add_argument('--anno-type',type=str,default='illumina',dest='tType',
-                        help='Select annotation type for determining non-silent somatic variants. Alternatively, provide tab-delimited input text \
-                        file describing terms for use. Valid default options are: illumina, annovar. If providing text file, must include one \
-                        term per row with 3 columns: 1) String that is either "Gene" or "Effect" to denote field with gene name or gene effect,\
+    coding_parser.add_argument('--anno-type',type=str,default='annovar-refGene',dest='tType',
+                        help="Select annotation type for determining non-silent somatic variants. \
+                        Valid pre-sets are: 'annovar-refGene', 'annovar-knownGene', 'annovar-ensGene', or 'illumina'. \
+                        Alternatively, provide tab-delimited input text file describing terms for use.\
+                        If providing text file, must include one term per row with 3 columns: \
+                        1) String that is either 'Gene' or 'Effect' to denote field with gene name or gene effect,\
                         respectively; 2) value from VCF INFO field for code to search for matching gene name or non-silent effect;\
-                        3) valid terms (can be left blank for "Gene" row). \
-                        If MAF input is used, this option is ignored and default MAF terms are used.')
-    
+                        3) valid terms (can be left blank for 'Gene' row). \
+                        If MAF input is used, this option is ignored and default MAF terms are used.")
+
     coding_parser.add_argument('-m','--mappable-regions',dest='map_regions',default=None,type=str,
                         help='Provide BED file of mappable genomic regions (sorted and tabix-indexed). If provided, only portions of regions \
                         from input file overlapping these mappable regions will be used in analsyis. Region lengths are also adjusted for \
@@ -117,7 +126,7 @@ def add_coding_parser(subparsers):
                         help='Set minimum number of covariate cluster members. Regions belonging to a cluster with only itself or less than\
                         this value are flagged and a local background around the region is calculated and used instead.')
     coding_parser.add_argument('--precomputed-covars',type=str,default=None,dest='cov_precomp_dir',
-                        help='Provide path to pre-computed covariate clusters for regions in input BED file.')
+                        help='Provide path to pre-computed covariate clusters for genes in input GTF file.')
     coding_parser.add_argument('-d','--hotspot-distance',type=int,default=50,dest='max_hs_dist',
                         help='Set maximum distance between mutations for candidate hotspot discovery.')
     coding_parser.add_argument('--min-hs-vars',type=int,default=3,dest='min_hs_vars',
@@ -153,6 +162,14 @@ def add_noncoding_parser(subparsers):
                         help='Provide output directory for analysis.')
     noncoding_parser.add_argument('--prefix',type=str,default='mutation_enrichment',dest='prefix',
                         help='Provide prefix for analysis.')
+     
+    noncoding_parser.add_argument('--stat-type',dest='stat_type',type=str,default='nmutations',
+                               help="Select the stype of statistical testing to perform. Options are:\
+                               1) 'numutations' (default), which uses the negative binomial distribution to compute the significance of \
+                               the number of non-coding mutations 'k' in a region of length 'x' against background mutation rate 'p', or \
+                               2) 'nsamples', which uses the binomial distribution to compute the significance of the number of samples \
+                               containing a non-coding somatic mutation ('n') among 'N' total samples against background mutation rate 'p'.")
+    
     noncoding_parser.add_argument('-m','--mappable-regions',dest='map_regions',default=None,type=str,
                         help='Provide BED file of mappable genomic regions (sorted and tabix-indexed). If provided, only portions of regions \
                         from input file overlapping these mappable regions will be used in analsyis. Region lengths are also adjusted for \
