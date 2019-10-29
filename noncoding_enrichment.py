@@ -105,12 +105,9 @@ def run(parser, args, version):
         if not vargs['cov_precomp_dir'].endswith('/'): vargs['cov_precomp_dir']+='/'
     min_rclust_size = vargs['min_rclust_size']
     # check if local background requested
-    use_local = False
+    use_local = vargs['use_local']
     if vargs['use_local'] == True and use_covars == True:
-        print('  --use-local selected but covariates provided. Skipping this option and using covariates for backgrounds.')
-        use_local = False
-    elif vargs['use_local'] == True and use_covars == False:
-        use_local = True
+        print('  --use-local selected with covariates provided. Local backgrounds will be considered in covariate cluster rate calculations.')
     # hotspot options
     max_hs_dist = vargs['max_hs_dist']
     min_clust_vars = vargs['min_hs_vars']
@@ -229,7 +226,7 @@ def run(parser, args, version):
         scr = sorted(list(small_clust_regions))
         for i in range(0,num_chunks_local):
             rr = range(i*chunk_size_local,min((i+1)*chunk_size_local,len(scr)))
-            chunks_local.append([regions[index] for index in scr[rr[0]:rr[-1]+1]]) 
+            chunks_local.append([regions[index] for index in scr[rr[0]:rr[-1]+1]])  
         res = [pool.apply_async(get_local_background,args=(chunk,VCFs,sample_names,snps_only,blacklist,True,mapr)) for chunk in chunks_local]
         for r in res:
             rget = r.get()
@@ -282,28 +279,38 @@ def run(parser, args, version):
     time0_gbg = time.time()
   
     # Get cluster background
-    if use_covars:
-        print('Calculating covariate background rates...')
-        for r in regions: 
-            if r.num_mutations == 0: continue
-            get_cluster_bg_rates(r,regions,scr)
-    elif use_local:
+    if use_local:
         print('Calculating local region background rates...')
         chunk_size = 100
-        regs_for_local = [r for r in regions if r.num_mutations > 0] 
+        if use_covars: # Need calculation for all regions if using in conjuction with covariates
+            regs_for_local = regions
+            for_covar = True
+        else:
+            regs_for_local = [r for r in regions if r.num_mutations > 0] 
+            for_covar = False
         num_chunks = int(np.ceil(len(regs_for_local)/chunk_size))
         chunks = []
         for i in range(0,num_chunks):
             rr = range(i*chunk_size,min((i+1)*chunk_size,len(regs_for_local)))
             chunks.append(regs_for_local[rr[0]:rr[-1]+1])
-        res = [pool.apply_async(get_local_background,args=(chunk,VCFs,sample_names,snps_only,blacklist,False,mapr)) for chunk in chunks]
+        res = [pool.apply_async(get_local_background,args=(chunk,VCFs,sample_names,snps_only,blacklist,for_covar,mapr)) for chunk in chunks]
         for r in res:
             rget = r.get()
             for rr in rget:
                 assert regions[rr.index].index == rr.index
                 regions[rr.index] = rr
-        print('Local backgrounds obtained.')
-    else:
+        print('Local backgrounds obtained.') 
+    if use_covars and use_local==False:
+        print('Calculating covariate background rates...')
+        for r in regions: 
+            if r.num_mutations == 0: continue
+            get_cluster_bg_rates(r,regions,scr)
+    elif use_covars and use_local==True:
+        print('Calculating covariate background rates with local rates included...')
+        for r in regions:
+            if r.num_mutations == 0: continue
+            get_cluster_bg_rates(r,regions,scr,with_local=True)
+    elif use_covars==False and use_local==False:
         print('Calculating global per-sample region background rates...')
         global_bg_rates = get_global_bg_rates(regions,sample_names)
     print('Background rates calculated (%0.2f min.).'%((time.time()-time0_gbg)/60))
@@ -323,7 +330,7 @@ def run(parser, args, version):
 
     # Calculate region and hotspot enrichment p-values
     print('\n--------------------------ENRICHMENT ANALYSES--------------------------')
-    print('Calculating region and hotspot enrichment p-values with negative binomial tests...')
+    print('Calculating region and hotspot enrichment p-values...')
     print('\nPerforming regional enrichment analysis...')
     time0_enr = time.time()
     if use_covars:
@@ -333,7 +340,7 @@ def run(parser, args, version):
         for r in rget:
             index,pvf = r
             regions[index].region_pval = pvf
-    elif use_local:
+    elif use_local and use_covars == False:
         print('  Using local background rates.')
         res = [pool.apply_async(get_region_enrichments_local,args=(r,ns,stat_type)) for r in regions if r.num_mutations>0]
         rget = [r.get() for r in res]
@@ -342,7 +349,7 @@ def run(parser, args, version):
             regions[index].background_prob = bgprob
             regions[index].enrichment_bg_type = bgtype
             regions[index].region_pval = pvf
-    else:
+    elif use_local==False and use_covars==False:
         print('  Using global background rates.')
         res = [pool.apply_async(get_region_enrichments_global,args=(r,global_bg_rates,ns,stat_type)) for r in regions if r.num_mutations>0]
         rget = [r.get() for r in res]
@@ -354,14 +361,16 @@ def run(parser, args, version):
     print('\nRegion enrichment p-values obtained (%0.2f min.).'%((time.time() - time0_enr)/60))
 
     # get hotspot enrichments
-    print('\nCalculating hotspot enrichment p-values with negative binomial tests...')
+    print('\nCalculating hotspot enrichment p-values...')
     time0_hse = time.time()
     if use_covars:
         print('  Using clustered covariate background regions.')
         clust_output = []
         for r in regions:
             if len(r.clusters) > 0:
-                oce = get_hotspot_enrichments_covar(r,regions,ns,scr,stat_type)
+                if use_local: with_local = True
+                else: with_local = False
+                oce = get_hotspot_enrichments_covar(r,regions,ns,scr,stat_type,with_local)
                 clust_output.append(oce) 
     elif use_local:
         print('  Using local background rates.')
@@ -610,9 +619,15 @@ def count_mutations_from_vcfs(VCFs,names,regions,snps_only,blacklist=None,mapr=N
                     
                     # Get variant info
                     pos = v.POS
-                    ref = v.REF.encode('ascii')
+                    if sys.version_info.major == 2: # handle encoding by Python major version 
+                        ref = v.REF.encode('ascii')
+                    elif sys.version_info.major == 3:
+                        ref = v.REF
                     for a in v.ALT:
-                        alt = a.encode('ascii')
+                        if sys.version_info.major == 2:
+                            alt = a.encode('ascii')
+                        elif sys.version_info.major == 3:
+                            alt = a
                         var_info = '%d_%s_%s'%(pos,ref,alt)
                     
                         # Check for duplicate lines
@@ -642,7 +657,8 @@ def count_mutations_from_vcfs(VCFs,names,regions,snps_only,blacklist=None,mapr=N
 
 def get_local_background(regions,VCFs,names,snps_only,blacklist=None,for_covar=False,mapr=None):
     # Windows
-    wins = [100e3,500e3,1e6]
+    #wins = [100e3,500e3,1e6]
+    wins = [1e6,2e6]
 
     # load mappable regions file if supplied
     if mapr != None:
@@ -684,7 +700,7 @@ def get_local_background(regions,VCFs,names,snps_only,blacklist=None,for_covar=F
                         r_strings.append(MR)
                 
                 if win_l == 0:
-                    bgs_per_win.append(0)
+                    bgs_per_win.append([0,0,0])
                     continue
 
                 # Count mutations
@@ -700,15 +716,20 @@ def get_local_background(regions,VCFs,names,snps_only,blacklist=None,for_covar=F
                             # check if black-listed site
                             if blacklist != None:
                                 if r.chrom in blacklist:
-                                    var_info = '%d_%s_%s'%(v.POS,v.REF.encode('ASCII'),a.encode('ascii'))
+                                    if sys.version_info.major == 2:
+                                        var_info = '%d_%s_%s'%(v.POS,v.REF.encode('ASCII'),a.encode('ascii'))
+                                    elif sys.version_info.major == 3:
+                                        var_info = '%d_%s_%s'%(v.POS,v.REF,a)
                                     if var_info in blacklist[r.chrom]: continue
                             mut_count += 1
                 
-                bgs_per_win.append(mut_count / win_l)
+                bgs_per_win.append([mut_count / win_l, mut_count, win_l])
 
             # Get max rate
-            maxi,maxr = 0,bgs_per_win[0]
-            for i,bgr in enumerate(bgs_per_win):
+            maxi,maxr = 0,bgs_per_win[0][0]
+            #for i,bgr in enumerate(bgs_per_win):
+            for i in range(0, len(bgs_per_win)):
+                bgr, mc, wl = bgs_per_win[i]
                 if bgr > maxr:
                     maxi,maxr = i,bgr
 
@@ -716,6 +737,7 @@ def get_local_background(regions,VCFs,names,snps_only,blacklist=None,for_covar=F
             r.local_backgrounds[name] = {}
             r.local_backgrounds[name]['win_size'] = wins[maxi]
             r.local_backgrounds[name]['bg_rate'] = maxr
+            r.local_backgrounds[name]['count_winlen'] = [bgs_per_win[maxi][1], bgs_per_win[maxi][2]]
 
     return regions
 
@@ -743,7 +765,7 @@ def get_global_bg_rates(regions,names):
         bg_rates[s] = rate
     return bg_rates
 
-def get_cluster_bg_rates(r,regions,scr):
+def get_cluster_bg_rates(r,regions,scr,with_local=False):
     '''
     Determine per-region background rates from clustered regions. 
     If region is a member of small cluster, the local background rate is used.
@@ -758,11 +780,26 @@ def get_cluster_bg_rates(r,regions,scr):
         r.enrichment_bg_type = 'clustered_regions'
         members = [r.index] + r.covariate_clusters
         regs = [regions[i] for i in members]
-        bgf_rates = get_global_bg_rates(regs,csf)
+        bgf_rates = {}
+        if with_local:
+            r.enrichment_bg_type += '+local'
+            bg_rates = {}
+            for s in csf: bg_rates[s] = [0,0]
+            for reg in regs:
+                for s in csf:
+                    mc, winl = reg.local_backgrounds[s]['count_winlen']
+                    bg_rates[s][0] += mc
+                    bg_rates[s][1] += winl
+            for s in bg_rates:
+                rate = bg_rates[s][0] / bg_rates[s][1]
+                bg_rates[s] = rate
+            bgf_rates = bg_rates
+        else:
+            bgf_rates = get_global_bg_rates(regs,csf)
         for s in csf: bgpf_l.append(bgf_rates[s])
     bgpf = gmean(bgpf_l) # geometric mean
     r.background_prob = bgpf
-
+    
 def get_region_enrichments_global(r,bg_rates,ns,stat_type):
     '''
     Function for determining full region enrichments using global background rates.
@@ -869,7 +906,7 @@ def get_region_enrichments_covar(r,ns,stat_type):
     # Return tuple
     return (r.index,pvf)
 
-def get_hotspot_enrichments_covar(r,regions,ns,scr,stat_type):
+def get_hotspot_enrichments_covar(r,regions,ns,scr,stat_type,with_local=False):
     '''
     Compute hotspot enrichment p-values using negative binomial test with clustered-region background rates.
     '''
@@ -895,6 +932,7 @@ def get_hotspot_enrichments_covar(r,regions,ns,scr,stat_type):
                 for s in cs: bgp_l.append(r.local_backgrounds[s]['bg_rate'])
             else:
                 bg_type = 'clustered_regions'
+                if with_local: bg_type += '+local'
                 members = [r.index] + r.covariate_clusters
                 regs = [regions[i] for i in members]
                 bg_rates = get_global_bg_rates(regs,cs)  

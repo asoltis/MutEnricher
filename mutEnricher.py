@@ -21,7 +21,7 @@ def main():
     usage = 'python %(prog)s'
     description = 'Perform somatic coding or non-coding analysis on sets of somatic mutation calls.'
     epilog = 'For command line options of sub-commands, type: %(prog)s COMMAND -h'
-    version = "1.2.0"
+    version = "1.3.0"
 
     # set up parser and sub-parsers
     parser = argparse.ArgumentParser(usage=usage,description=description,epilog=epilog,formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -71,12 +71,13 @@ def add_coding_parser(subparsers):
                                Analysis will only considers genes from GTF file that are present in this list. \
                                Default behavior is to query all coding genes present in input GTF.')
     
-    coding_parser.add_argument('--stat-type',dest='stat_type',type=str,default='nmutations',
+    coding_parser.add_argument('--stat-type',dest='stat_type',type=str,default='nsamples',
                                help="Select the stype of statistical testing to perform. Options are:\
-                               1) 'numutations' (default), which uses the negative binomial distribution to compute the significance of \
-                               the number of non-silent mutations 'k' in a gene of coding length 'x' against background mutation rate 'p', or \
-                               2) 'nsamples', which uses the binomial distribution to compute the significance of the number of samples \
-                               containing a non-silent somatic mutation ('n') among 'N' total samples against background mutation rate 'p'.")
+                               1) 'nsamples' (default), which uses the binomial distribution to compute the significance of the number of \
+                               samples containing a non-silent somatic mutation ('n') among 'N' total samples against background mutation \
+                               rate 'p', or \
+                               2) 'numutations', which uses the negative binomial distribution to compute the significance of \
+                               the number of non-silent mutations 'k' in a gene of coding length 'x' against background mutation rate 'p'")
     
     coding_parser.add_argument('--bg-vars-type',dest='bg_vars_type',type=str,default='all',
                         help="Select which variants should be counted in background rate calculations. Choices are: 'all' and 'silent'. \
@@ -119,9 +120,10 @@ def add_coding_parser(subparsers):
     coding_parser.add_argument('--by-contig',dest='by_contig',action='store_true',
                         help='Use this flag to perform clustering on genes by contig (i.e. by chromosome). This speeds computation of gene \
                         clusters. If not set, clusters are computed using all genes in same run.')
-    coding_parser.add_argument('--use-local',dest='use_local',action='store_true',
-                        help='Use this flag to tell program to use local gene background rate instead of global background rate. \
-                        If covariate files or pre-computed covariates supplied, this option is ignored.')
+    coding_parser.add_argument('--use-local',dest='use_local',action='store_true', 
+                        help='Use this flag to tell the program to use the local gene background rate instead of global background rate. \
+                        If covariate files or pre-computed covariates are supplied along with this flag being set, a combined covariate \
+                        plus local background scheme is used whereby local backgrounds from cluster members are considered.')
     coding_parser.add_argument('--min-clust-size',type=int,default=3,dest='min_clust_size',
                         help='Set minimum number of covariate cluster members. Regions belonging to a cluster with only itself or less than\
                         this value are flagged and a local background around the region is calculated and used instead.')
@@ -163,12 +165,12 @@ def add_noncoding_parser(subparsers):
     noncoding_parser.add_argument('--prefix',type=str,default='mutation_enrichment',dest='prefix',
                         help='Provide prefix for analysis.')
      
-    noncoding_parser.add_argument('--stat-type',dest='stat_type',type=str,default='nmutations',
+    noncoding_parser.add_argument('--stat-type',dest='stat_type',type=str,default='nsamples',
                                help="Select the stype of statistical testing to perform. Options are:\
-                               1) 'numutations' (default), which uses the negative binomial distribution to compute the significance of \
-                               the number of non-coding mutations 'k' in a region of length 'x' against background mutation rate 'p', or \
-                               2) 'nsamples', which uses the binomial distribution to compute the significance of the number of samples \
-                               containing a non-coding somatic mutation ('n') among 'N' total samples against background mutation rate 'p'.")
+                               1) 'nsamples' (default), which uses the binomial distribution to compute the significance of the number of samples\
+                               containing a non-coding somatic mutation ('n') among 'N' total samples against background mutation rate 'p', or \
+                               2) 'numutations', which uses the negative binomial distribution to compute the significance of \
+                               the number of non-coding mutations 'k' in a region of length 'x' against background mutation rate 'p'.")
     
     noncoding_parser.add_argument('-m','--mappable-regions',dest='map_regions',default=None,type=str,
                         help='Provide BED file of mappable genomic regions (sorted and tabix-indexed). If provided, only portions of regions \
@@ -186,8 +188,9 @@ def add_noncoding_parser(subparsers):
                         help='Provide covariates weight file. Format is tab-delimited file (no header) with: covariate name, weight. \
                         Weights are normalized to sum=1. If not provided, uniform weighting of covariates is assumed.')
     noncoding_parser.add_argument('--use-local',dest='use_local',action='store_true',
-                        help='Use this flag to tell program to use local region background rate instead of global background rate. \
-                        If covariate files or pre-computed covariates supplied, this option is ignored.')
+                        help='Use this flag to tell the program to use the local region background rate instead of global background rate. \
+                        If covariate files or pre-computed covariates are supplied along with this flag being set, a combined covariate \
+                        plus local background scheme is used whereby local backgrounds from cluster members are considered.')
     noncoding_parser.add_argument('--min-rclust-size',type=int,default=3,dest='min_rclust_size',
                         help='Set minimum number of covariate cluster members. Regions belonging to a cluster with only itself or less than\
                         this value are flagged and a local background around the region is calculated and used instead.')

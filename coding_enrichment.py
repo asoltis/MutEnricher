@@ -144,14 +144,11 @@ def run(parser,args,version):
     min_clust_size = vargs['min_clust_size']
     by_contig = vargs['by_contig']
     # check if local background requested
-    use_local = False
-    if vargs['use_local'] == True and use_covars == True:
-        print('  --use-local selected but covariates provided. Skipping this option and using covariates for backgrounds.')
-        use_local = False
-    elif vargs['use_local'] == True and use_covars == False:
-        use_local = True
+    use_local = vargs['use_local']
+    if vargs['use_local'] == True and use_covars == True and use_maf == False:
+        print('  --use-local selected with covariates provided. Local backgrounds will be considered in covariate cluster rate calculations.')
     if use_local == True and use_maf == True:
-        print('  --use-local option not available when reading from MAF. Using global bacgkround rates instead.')
+        print('  --use-local option not available when reading from MAF. Setting option to False.')
         use_local = False
     # hotspot options
     max_hs_dist = vargs['max_hs_dist']
@@ -407,8 +404,31 @@ def run(parser,args,version):
     time0_gbg = time.time()
     
     # Get background rates according to option selected
+    if use_local:
+        print('Calculating local gene background rates...')
+        chunk_size = 100 
+        if use_covars: # Need to calculate for all genes if using in conjunction with covariates
+            genes_for_local = genes
+            for_covar = True
+        else:
+            genes_for_local = [g for g in genes if g.total_nonsilent_mutations>0]        
+            for_covar = False
+        num_chunks = int(ceil(len(genes_for_local)/chunk_size))
+        chunks = []
+        for i in range(0,num_chunks):
+            rr = range(i*chunk_size,min((i+1)*chunk_size,len(genes_for_local)))
+            chunks.append(genes_for_local[rr[0]:rr[-1]+1])
+        res = [pool.apply_async(get_local_background,args=(chunk,VCFs,sample_names,terms,tType,snps_only,blacklist,for_covar,mapr,bg_vtype)) for chunk in chunks] 
+        for r in res:
+            rget = r.get()
+            for rr in rget:
+                assert genes[rr.index].index == rr.index
+                genes[rr.index] = rr
+        del(res)
+        print('Local backgrounds obtained.')
     if use_covars:
-        print('Calculating covariate background rates...')
+        if use_local: print('Calculating covariate background ratees with local rates included...')
+        else: print('Calculating covariate background rates...')
         # Get global bg rates to deal with zero rate cases
         global_bg_rates = get_global_bg_rates(genes,sample_names,bg_vtype) 
         minBG = 1.0
@@ -418,27 +438,12 @@ def run(parser,args,version):
         for s in global_bg_rates:
             if global_bg_rates[s] == 0: global_bg_rates[s] = minBG
         for g in genes: 
-            #if g.total_mutations == 0: continue
             if g.total_nonsilent_mutations == 0: continue
-            get_cluster_bg_rates(g,genes,scr,global_bg_rates,bg_vtype) 
-    elif use_local:
-        print('Calculating local gene background rates...')
-        chunk_size = 100 
-        genes_for_local = [g for g in genes if g.total_nonsilent_mutations>0]        
-        num_chunks = int(ceil(len(genes_for_local)/chunk_size))
-        chunks = []
-        for i in range(0,num_chunks):
-            rr = range(i*chunk_size,min((i+1)*chunk_size,len(genes_for_local)))
-            chunks.append(genes_for_local[rr[0]:rr[-1]+1])
-        res = [pool.apply_async(get_local_background,args=(chunk,VCFs,sample_names,terms,tType,snps_only,blacklist,False,mapr,bg_vtype)) for chunk in chunks] 
-        for r in res:
-            rget = r.get()
-            for rr in rget:
-                assert genes[rr.index].index == rr.index
-                genes[rr.index] = rr
-        del(res)
-        print('Local backgrounds obtained.')
-    else:
+            if use_local:
+                get_cluster_bg_rates(g,genes,scr,global_bg_rates,bg_vtype,with_local=True)
+            else:
+                get_cluster_bg_rates(g,genes,scr,global_bg_rates,bg_vtype) 
+    elif use_covars == False and use_local == False: 
         print('Calculating global per-sample gene background rates...')
         global_bg_rates = get_global_bg_rates(genes,sample_names,bg_vtype)
         minBG = 1.0
@@ -550,7 +555,9 @@ def run(parser,args,version):
         clust_output = []
         for g in genes:
             if len(g.clusters) > 0:
-                oce = get_hotspot_enrichments_covar(g,genes,ns,global_bg_rates,scr,bg_vtype,stat_type)
+                if use_local: with_local = True
+                else: with_local = False
+                oce = get_hotspot_enrichments_covar(g,genes,ns,global_bg_rates,scr,bg_vtype,stat_type,with_local)
                 clust_output.append(oce) 
     elif use_local:
         print('  Using local background rates.')
@@ -836,9 +843,15 @@ def count_mutations_from_vcfs(VCFs,names,genes,terms,tType,snps_only,blacklist=N
                     
                     # Get variant info
                     pos = v.POS
-                    ref = v.REF.encode('ascii')
+                    if sys.version_info.major == 2: # handle encoding based on python major version
+                        ref = v.REF.encode('ascii')
+                    elif sys.version_info.major == 3:
+                        ref = v.REF
                     for a in v.ALT:
-                        alt = a.encode('ascii')
+                        if sys.version_info.major == 2:
+                            alt = a.encode('ascii')
+                        elif sys.version_info.major == 3:
+                            alt = a
                         var_info = '%d_%s_%s'%(pos,ref,alt)
                         # check if duplicate
                         if prior_var != None:
@@ -1027,13 +1040,12 @@ def get_global_bg_rates(genes,names,bg_vtype):
 
 def get_local_background(genes,VCFs,names,terms,tType,snps_only,blacklist=None,for_covar=False,mapr=None,bg_vtype='all'): 
     # Windows
-    wins = [10e3,50e3,100e3,500e3,1e6] #,2e6]
-    
+    wins = [1e6, 2e6]
+
     # load mappable regions file if supplied
     if mapr != None:
         mappable = TabixFile(mapr)
-        wins = [100e3,500e3,1e6]
-
+        
     # Get annotation term types
     anno_val, gname_val, func_val = '','',''
     if tType == 'illumina':
@@ -1056,13 +1068,12 @@ def get_local_background(genes,VCFs,names,terms,tType,snps_only,blacklist=None,f
         vcf = VCF(vcf_f,gts012=True,lazy=False)
         name = names[j]
         
-        #use_local_finder = False
         for g in genes:
             use_local_finder = False
             if for_covar: use_local_finder = True
             if use_local_finder == False:
                 if name not in g.mutations_by_sample: continue
-                if g.total_length >= 10e3 and g.total_nonsilent_mutations>0: 
+                if g.total_length >= 1e6 and g.total_nonsilent_mutations>0: 
                     g.local_backgrounds[name] = {}
                     g.local_backgrounds[name]['win_size'] = g.total_length
                     if bg_vtype == 'all':
@@ -1104,7 +1115,7 @@ def get_local_background(genes,VCFs,names,terms,tType,snps_only,blacklist=None,f
                             g_strings.append(MR)
                 
                     if win_l == 0:
-                        bgs_per_win.append(0)
+                        bgs_per_win.append([0,0,0])
                         continue
                     
                     mut_count = 0 
@@ -1117,7 +1128,10 @@ def get_local_background(genes,VCFs,names,terms,tType,snps_only,blacklist=None,f
                 
                             # Get variant info
                             for a in v.ALT:
-                                var_info = '%d_%s_%s'%(v.POS,v.REF.encode('ascii'),a.encode('ascii'))
+                                if sys.version_info.major == 2: # handle encoding by python major version
+                                    var_info = '%d_%s_%s'%(v.POS,v.REF.encode('ascii'),a.encode('ascii'))
+                                elif sys.version_info.major == 3:
+                                    var_info = '%d_%s_%s'%(v.POS,v.REF,a)
                                 # check if black-listed site
                                 if blacklist != None:
                                     if g.chrom in blacklist:
@@ -1175,11 +1189,13 @@ def get_local_background(genes,VCFs,names,terms,tType,snps_only,blacklist=None,f
                                         mut_count += 1
        
                     # update bgs list       
-                    bgs_per_win.append(mut_count / win_l)
+                    bgs_per_win.append([mut_count / win_l, mut_count, win_l])
 
                 # Get max rate
-                maxi,maxr = 0,bgs_per_win[0]
-                for i,bgr in enumerate(bgs_per_win):
+                maxi,maxr = 0,bgs_per_win[0][0]
+                #for i,bgr in enumerate(bgs_per_win):
+                for i in range(0, len(bgs_per_win)):
+                    bgr, mc, wl = bgs_per_win[i]
                     if bgr > maxr:
                         maxi,maxr = i,bgr
                 
@@ -1187,7 +1203,8 @@ def get_local_background(genes,VCFs,names,terms,tType,snps_only,blacklist=None,f
                 g.local_backgrounds[name] = {}
                 g.local_backgrounds[name]['win_size'] = wins_use[maxi]
                 g.local_backgrounds[name]['bg_rate'] = maxr
-                
+                g.local_backgrounds[name]['count_winlen'] = [bgs_per_win[maxi][1],bgs_per_win[maxi][2]]
+
     # impute any remaining 0 backgrounds
     for g in genes:
         szero,minbg = [],1
@@ -1202,7 +1219,7 @@ def get_local_background(genes,VCFs,names,terms,tType,snps_only,blacklist=None,f
 
     return genes
 
-def get_cluster_bg_rates(g,genes,scr,global_bg,bg_vtype):
+def get_cluster_bg_rates(g,genes,scr,global_bg,bg_vtype,with_local=False):
     '''
     Determine per-gene background rates from clustered genes. 
     If gene is a member of small cluster, the local background rate is used.
@@ -1215,10 +1232,25 @@ def get_cluster_bg_rates(g,genes,scr,global_bg,bg_vtype):
         for s in csf: bgpf_l.append(g.local_backgrounds[s]['bg_rate'])
     else:
         csf = [s for s in g.mutations_by_sample]
-        g.enrichment_bg_type = 'clustered_regions'
+        g.enrichment_bg_type = 'clustered_genes'
         members = [g.index] + g.covariate_clusters
         gmems = [genes[i] for i in members]
-        bgf_rates = get_global_bg_rates(gmems,csf,bg_vtype)
+        bgf_rates = {}
+        if with_local:
+            g.enrichment_bg_type += '+local'
+            bg_rates = {}
+            for s in csf: bg_rates[s] = [0,0]
+            for gmem in gmems:
+                for s in csf:
+                    mc, winl = gmem.local_backgrounds[s]['count_winlen']
+                    bg_rates[s][0] += mc
+                    bg_rates[s][1] += winl
+            for s in bg_rates:
+                rate = bg_rates[s][0] / bg_rates[s][1]
+                bg_rates[s] = rate
+            bgf_rates = bg_rates
+        else:
+            bgf_rates = get_global_bg_rates(gmems,csf,bg_vtype)
         for s in csf: 
             nmut = len(g.mutations_by_sample[s]['nonsilent'])
             if nmut == 0: continue # take only samples with at least one non-silent mutation
@@ -1342,7 +1374,7 @@ def get_gene_enrichments_covar(g,ns,stat_type):
     # Return tuple
     return (g.index,pvf)
 
-def get_hotspot_enrichments_covar(g,genes,ns,global_bg,scr,bg_vtype,stat_type):
+def get_hotspot_enrichments_covar(g,genes,ns,global_bg,scr,bg_vtype,stat_type,with_local=False):
     '''
     Compute hotspot enrichment p-values  with covariate cluster background rates.
     '''
@@ -1369,7 +1401,8 @@ def get_hotspot_enrichments_covar(g,genes,ns,global_bg,scr,bg_vtype,stat_type):
                 bg_type = 'local'
                 for s in cs: bgp_l.append(g.local_backgrounds[s]['bg_rate']) 
             else:
-                bg_type = 'clustered_regions'
+                bg_type = 'clustered_genes'
+                if with_local: bg_type += '+local'
                 members = [g.index] + g.covariate_clusters
                 gmems = [genes[i] for i in members]
                 bgf_rates = get_global_bg_rates(gmems,cs,bg_vtype)

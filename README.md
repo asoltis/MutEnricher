@@ -7,7 +7,7 @@ Institution: Uniformed Services University of the Health Sciences, Bethesda, MD
 
 License: MIT License, see [License](https://github.com/asoltis/MutEnricher/blob/master/LICENSE.txt)
 
-Version: 1.2.0
+Version: 1.3.0
 
 Introduction:
 ---------------
@@ -122,15 +122,27 @@ Files/folders contained in example_data:
 
 # Change log #
 ---------------
+10-23-2019
+----------
+- Version 1.3.0
+- Major updates:
+    - 'nsamples' (binomial testing method) is now default statistical testing (--stat-type) option.
+    - Combined covariate clustering plus local background rate method implemented. When covariates are supplied and --use-local is also set,
+      programs compute local backgrounds around features part of clusters during background calculations. 
+
+10-10-2019
+----------
+- Version 1.2.1
+- Minor update to local background method, whereby minimum search window is increased to 1 Mb.
 
 09-13-2019
 ----------
 - Version 1.2.0
-- Major changes:
+- Major updates:
     - Code updated for compatibility with Python 3.
     - Included --stat-type option to select between original negative binomial test based on mutation counts (nmutations, default) or
       binomial test on number of mutated samples (nsamples).
-- Minor changes:
+- Minor updates:
     - Updated --anno-type preset options to better reflect various ANNOVAR gene annotations. 
     - Deprecated --repliseq-fns option in utilities code and updated to -i/--interval-files option
 
