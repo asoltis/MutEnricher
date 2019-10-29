@@ -13,7 +13,8 @@ Introduction:
 ---------------
 
 MutEnricher is a flexible toolset that performs somatic mutation enrichment analysis of both 
-protein-coding and non-coding genomic loci from whole genome sequencing (WGS) data. 
+protein-coding and non-coding genomic loci from whole genome sequencing (WGS) data, implemented
+in Python and **usable with Python 2 and 3.**
 
 MutEnricher contains two distinct modules:
 1. coding - for performing somatic enrichment analysis of non-silent variation in protein-coding genes
