@@ -1,6 +1,8 @@
 # MutEnricher #
 ----------------
 
+<img src='images/MutEnricher_Fig1_20190422_for_GitHub.png'>
+
 Author: Anthony R. Soltis (anthony.soltis.ctr@usuhs.edu, anthonyrsoltis@gmail.com)
 
 Institution: Uniformed Services University of the Health Sciences, Bethesda, MD
