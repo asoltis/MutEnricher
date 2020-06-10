@@ -16,7 +16,9 @@ Introduction:
 
 MutEnricher is a flexible toolset that performs somatic mutation enrichment analysis of both 
 protein-coding and non-coding genomic loci from whole genome sequencing (WGS) data, implemented
-in Python and **usable with Python 2 and 3.**
+in Python and **usable with Python 2 and 3.** 
+
+**MutEnricher is now also available as a [Docker image]**(https://hub.docker.com/repository/docker/asoltis/mutenricher)
 
 MutEnricher contains two distinct modules:
 1. coding - for performing somatic enrichment analysis of non-silent variation in protein-coding genes
@@ -125,6 +127,11 @@ Files/folders contained in example_data:
 
 # Change log #
 ---------------
+06-10-2020
+----------
+- Dockerfile added for creation of Docker image.
+- No code updates.
+
 10-23-2019
 ----------
 - Version 1.3.0
