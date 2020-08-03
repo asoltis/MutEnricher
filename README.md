@@ -30,6 +30,12 @@ The main driver script is mutEnricher.py and each tool can be evoked from here, 
 
 See help pages and associated documentation for methodological and run details. 
 
+Citation:
+---------
+A [MutEnricher manuscript](https://rdcu.be/b51ka) is now published in BMC Bioinformatics. Please cite if using this software:
+
+Soltis, A.R., Dalgard, C.L., Pollard, H.B., & Wilkerson, M.D. MutEnricher: a flexible toolset for somatic mutation enrichment analysis of tumor whole genomes. BMC Bioinformatics (2020). 20(1).
+
 Info and User Guides:
 ---------------------
 
