@@ -9,7 +9,7 @@ Institution: Uniformed Services University of the Health Sciences, Bethesda, MD
 
 License: MIT License, see [License](https://github.com/asoltis/MutEnricher/blob/master/LICENSE.txt)
 
-Version: 1.3.0
+Version: 1.3.1
 
 Introduction:
 ---------------
@@ -133,6 +133,12 @@ Files/folders contained in example_data:
 
 # Change log #
 ---------------
+10-01-2020
+----------
+- Version 1.3.1
+- Bug fix:
+    - Update to coding module and gene covariate code to address incomplete merging of overlapping gene feature intervals (exons, CDS).
+
 06-10-2020
 ----------
 - Dockerfile added for creation of Docker image.

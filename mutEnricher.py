@@ -21,7 +21,7 @@ def main():
     usage = 'python %(prog)s'
     description = 'Perform somatic coding or non-coding analysis on sets of somatic mutation calls.'
     epilog = 'For command line options of sub-commands, type: %(prog)s COMMAND -h'
-    version = "1.3.0"
+    version = "1.3.1"
 
     # set up parser and sub-parsers
     parser = argparse.ArgumentParser(usage=usage,description=description,epilog=epilog,formatter_class=argparse.ArgumentDefaultsHelpFormatter)

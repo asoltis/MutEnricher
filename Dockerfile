@@ -3,7 +3,7 @@ FROM python:3.7.7
 ARG BUILD_DATE
 
 LABEL maintainer="anthonyrsoltis@gmail.com"
-LABEL version="1.3.0"
+LABEL version="1.3.1"
 LABEL build-date=$BUILD_DATE
 LABEL description="MutEnricher: somatic coding and noncoding mutation enrichment analysis tool."
 LABEL url="https://github.com/asoltis/MutEnricher"

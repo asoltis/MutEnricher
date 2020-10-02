@@ -738,6 +738,18 @@ def load_gtf(gtf,genefield,gene_list,genes_to_use):
     FH.close()
     return genes
 
+def run_merge(exlist):
+    '''
+    Function to recursively run merge_list script until all overlapping intervals accounted for.
+    '''
+
+    mergelen = len(exlist)
+    mergelist = merge_list(sorted(exlist))
+    while len(mergelist) < mergelen and len(mergelist) > 1:
+        mergelen = len(mergelist)
+        mergelist = merge_list(mergelist) 
+    return mergelist
+            
 def merge_list(exlist):
     '''
     Merge overlapping intervals from sorted list.
@@ -1587,11 +1599,11 @@ class Gene:
 
         # set exons
         if len(gene['exons'])==1: self.exons = gene['exons']
-        else: self.exons = merge_list(sorted(gene['exons']))
+        else: self.exons = run_merge(sorted(gene['exons']))
         
         # set coding regions
         if len(gene['CDS']) == 1: self.coding_regions = gene['CDS']
-        else: self.coding_regions = merge_list(sorted(gene['CDS']))
+        else: self.coding_regions = run_merge(sorted(gene['CDS']))
         
         # set introns
         self.introns = []
