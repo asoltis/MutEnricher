@@ -21,7 +21,7 @@ def main():
     usage = 'python %(prog)s'
     description = 'Perform somatic coding or non-coding analysis on sets of somatic mutation calls.'
     epilog = 'For command line options of sub-commands, type: %(prog)s COMMAND -h'
-    version = "1.3.1"
+    version = "1.3.2"
 
     # set up parser and sub-parsers
     parser = argparse.ArgumentParser(usage=usage,description=description,epilog=epilog,formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -95,7 +95,8 @@ def add_coding_parser(subparsers):
     
     coding_parser.add_argument('--anno-type',type=str,default='annovar-refGene',dest='tType',
                         help="Select annotation type for determining non-silent somatic variants. \
-                        Valid pre-sets are: 'annovar-refGene', 'annovar-knownGene', 'annovar-ensGene', or 'illumina'. \
+                        Valid pre-sets are: 'annovar-refGene', 'annovar-knownGene', 'annovar-ensGene', 'SnpEff', or 'illumina'. \
+                        For 'illumina', 'CSQT' INFO field is parsed; for 'SnpEff', 'ANN' INFO field is parsed. \
                         Alternatively, provide tab-delimited input text file describing terms for use.\
                         If providing text file, must include one term per row with 3 columns: \
                         1) String that is either 'Gene' or 'Effect' to denote field with gene name or gene effect,\

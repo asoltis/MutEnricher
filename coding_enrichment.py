@@ -92,7 +92,7 @@ def run(parser,args,version):
     # annotation type
     tType = vargs['tType']
     if use_maf: tType = 'maf' # over-ride if MAF being used
-    elif tType not in ['annovar-refGene','annovar-knownGene','annovar-ensGene','illumina']:
+    elif tType not in ['annovar-refGene','annovar-knownGene','annovar-ensGene','SnpEff','illumina']:
         if os.path.isfile(tType):
             annrows = set([x.strip().split('\t')[0] for x in open(tType).readlines()])
             if len(annrows) != 2: parser.error('Custom annotations file must contain Gene and Effect as row names')
@@ -784,7 +784,7 @@ def load_nonsilent_terms(tType):
     Return dictionary for annotation terms for genes/non-silent mutations.
     '''
     if tType == 'illumina':
-        terms = ["missense_variant","splice_region_variant","stop_gained","frameshift_variant","inframe_deletion",
+        terms = ["missense_variant","stop_gained","frameshift_variant","inframe_deletion", #"splice_region_variant",
                  "splice_acceptor_variant","splice_donor_variant","inframe_insertion",
                  "stop_lost","start_lost","frameshift_variant","protein_altering_variant"]
         return terms
@@ -792,6 +792,12 @@ def load_nonsilent_terms(tType):
         terms = ['frameshift_deletion','frameshift_insertion','frameshift_substitution',
                  'nonframeshift_deletion','nonframeshift_insertion','nonframeshift_substitution',
                  'nonsynonymous_SNV','stopgain','stoploss']
+        return terms
+    elif tType == 'SnpEff':
+        terms = ["missense_variant","stop_gained","frameshift_variant","inframe_deletion", #"splice_region_variant",
+                 "splice_acceptor_variant","splice_donor_variant","inframe_insertion",
+                 "stop_lost","start_lost","disruptive_inframe_deletion","disruptive_inframe_insertion",
+                 "initiator_codon_variant","conservative_inframe_insertion","conservative_inframe_deletion"]
         return terms
     elif tType == 'maf':
         terms =  ["Frame_Shift_Del","Frame_Shift_Ins","In_Frame_Del","In_Frame_Ins",
@@ -832,6 +838,8 @@ def count_mutations_from_vcfs(VCFs,names,genes,terms,tType,snps_only,blacklist=N
         anno_val = 'ExonicFunc.ensGene'
         gname_val = 'Gene.ensGene'
         func_val = 'Func.ensGene'
+    elif tType == 'SnpEff':
+        anno_val, gname_val = 'ANN', 'ANN'
 
     # count vars
     for j,vcf_f in enumerate(VCFs):
@@ -892,6 +900,20 @@ def count_mutations_from_vcfs(VCFs,names,genes,terms,tType,snps_only,blacklist=N
                                             if g.name == ginfo and geffect in terms: nonsilent = True
                                         else: 
                                             if g.name in msinfo: nonsilent = True
+                            except KeyError: pass
+                        elif tType == 'SnpEff': # new 2021-05-11
+                            try:
+                                ANN = v.INFO[anno_val]
+                                for ann in ANN.split(','):
+                                    altid, effterm, vimpact, ginfo = ann.split('|')[0:4]
+                                    found_term = False
+                                    if altid == alt:
+                                        for eterm in effterm.split('&'):
+                                            if eterm in terms: found_term = True
+                                        if found_term:
+                                            if g.name == ginfo: 
+                                                nonsilent = True
+                                                break
                             except KeyError: pass
                         else:
                             found_term = False
@@ -1074,6 +1096,8 @@ def get_local_background(genes,VCFs,names,terms,tType,snps_only,blacklist=None,f
         anno_val = 'ExonicFunc.ensGene'
         gname_val = 'Gene.ensGene'
         func_val = 'Func.ensGene'
+    elif tType == 'SnpEff':
+        anno_val, gname_val = 'ANN', 'ANN'
 
     # Loop over VCFs
     for j,vcf_f in enumerate(VCFs):
@@ -1175,6 +1199,20 @@ def get_local_background(genes,VCFs,names,terms,tType,snps_only,blacklist=None,f
                                                     else: 
                                                         if g.name in msinfo: nonsilent = True
                                         except KeyError: pass
+                                    elif tType == 'SnpEff': # new 2021-05-11
+                                        try:
+                                            ANN = v.INFO[anno_val]
+                                            for ann in ANN.split(','):
+                                                altid, effterm, vimpact, ginfo = ann.split('|')[0:4]
+                                                found_term = False
+                                                if altid == alt:
+                                                    for eterm in effterm.split('&'):
+                                                        if eterm in terms: found_term = True
+                                                    if found_term:
+                                                        if g.name == ginfo: 
+                                                            nonsilent = True
+                                                            break
+                                        except KeyError: pass 
                                     else:
                                         found_term = False
                                         anno_vals = terms['terms'].keys()

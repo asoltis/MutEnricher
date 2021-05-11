@@ -96,7 +96,8 @@ def main():
         for x in open(interval_fns).readlines():
             x = x.strip('\n').split('\t')
             rsfn,rsn = x[0],x[1]
-            if not os.path.isfile(rsfn): parser.error('File for %s not found!'%(rsn))
+            if not os.path.isfile(rsfn) or not os.path.isfile(rsfn+'.tbi'): 
+                parser.error('Interval file or index for %s not found!'%(rsn))
             int_fns.append([x[0],x[1]])
         
     # set up multiprocessing pool
@@ -313,7 +314,7 @@ def get_interval_data(genes,INT):
     '''
     for fn,name in INT:
         tb = TabixFile(fn)
-
+        
         for g in genes:
         
             # Get region for searching replication timing data
@@ -327,7 +328,10 @@ def get_interval_data(genes,INT):
             else: gstr = '%s:%d-%d'%(g.chrom,g.start,g.stop)
 
             # Call to tabix to get dat from bedGraph 
-            it_genes = tb.fetch(gstr)
+            try: it_genes = tb.fetch(gstr)
+            except ValueError: # handle regions where no interval can be made
+                g.intervalData[name] = None
+                continue
             intData = []
             for itr in it_genes:
                 if itr == '': continue

@@ -80,8 +80,9 @@ def main():
     if interval_fns != None:
         for x in open(interval_fns).readlines():
             x = x.strip('\n').split('\t')
-            rsfn,rsn = x[0],x[1]
-            if not os.path.isfile(rsfn): parser.error('File for %s not found!'%(rsn))
+            rsfn,rsn = x[0],x[1] 
+            if not os.path.isfile(rsfn) or not os.path.isfile(rsfn+'.tbi'): 
+                parser.error('Interval file or index for %s not found!'%(rsn))
             int_fns.append([x[0],x[1]])
        
     # set up multiprocessing pool
@@ -207,7 +208,10 @@ def get_interval_data(regions,INT):
                 rstr = '%s:%d-%d'%(r.chrom,start,stop)
             else: rstr = r.region_string
 
-            it_regions = tb.fetch(rstr)
+            try: it_regions = tb.fetch(rstr)
+            except  ValueError: # handle regions where no interval can be made
+                r.intervalData[name] = None
+                continue
             intData = []
             for rtr in it_regions:
                 if rtr == '': continue
