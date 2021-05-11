@@ -9,7 +9,7 @@ Institution: Uniformed Services University of the Health Sciences, Bethesda, MD
 
 License: MIT License, see [License](https://github.com/asoltis/MutEnricher/blob/master/LICENSE.txt)
 
-Version: 1.3.1
+Version: 1.3.2
 
 Introduction:
 ---------------
@@ -133,6 +133,14 @@ Files/folders contained in example_data:
 
 # Change log #
 ---------------
+05-11-2021
+----------
+- Version 1.3.2
+- Updates:
+    - Included SnpEff annotation parsing capabilities (via "ANN" INFO field) in coding module. Set --anno-type options to 'SnpEff' to 
+      use pre-set annotations compatible with this tool.
+    - Improved error handling for interval files and regions in covariate utility scripts.
+
 10-01-2020
 ----------
 - Version 1.3.1
