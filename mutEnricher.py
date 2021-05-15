@@ -76,7 +76,7 @@ def add_coding_parser(subparsers):
                                1) 'nsamples' (default), which uses the binomial distribution to compute the significance of the number of \
                                samples containing a non-silent somatic mutation ('n') among 'N' total samples against background mutation \
                                rate 'p', or \
-                               2) 'numutations', which uses the negative binomial distribution to compute the significance of \
+                               2) 'nmutations', which uses the negative binomial distribution to compute the significance of \
                                the number of non-silent mutations 'k' in a gene of coding length 'x' against background mutation rate 'p'")
     
     coding_parser.add_argument('--bg-vars-type',dest='bg_vars_type',type=str,default='all',
@@ -170,7 +170,7 @@ def add_noncoding_parser(subparsers):
                                help="Select the stype of statistical testing to perform. Options are:\
                                1) 'nsamples' (default), which uses the binomial distribution to compute the significance of the number of samples\
                                containing a non-coding somatic mutation ('n') among 'N' total samples against background mutation rate 'p', or \
-                               2) 'numutations', which uses the negative binomial distribution to compute the significance of \
+                               2) 'nmutations', which uses the negative binomial distribution to compute the significance of \
                                the number of non-coding mutations 'k' in a region of length 'x' against background mutation rate 'p'.")
     
     noncoding_parser.add_argument('-m','--mappable-regions',dest='map_regions',default=None,type=str,
