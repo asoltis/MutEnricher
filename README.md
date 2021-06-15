@@ -9,7 +9,7 @@ Institution: Uniformed Services University of the Health Sciences, Bethesda, MD
 
 License: MIT License, see [License](https://github.com/asoltis/MutEnricher/blob/master/LICENSE.txt)
 
-Version: 1.3.2
+Version: 1.3.3
 
 Introduction:
 ---------------
@@ -133,6 +133,13 @@ Files/folders contained in example_data:
 
 # Change log #
 ---------------
+06-15-2021
+----------
+- Version 1.3.3
+- Updates:
+    - Include VEP annotation parsing capabilities (via "CSQ" field) in coding module. 
+    - Included missing function in coding analysis code to parse blacklist variant input file.
+
 05-11-2021
 ----------
 - Version 1.3.2

@@ -92,7 +92,7 @@ def run(parser,args,version):
     # annotation type
     tType = vargs['tType']
     if use_maf: tType = 'maf' # over-ride if MAF being used
-    elif tType not in ['annovar-refGene','annovar-knownGene','annovar-ensGene','SnpEff','illumina']:
+    elif tType not in ['annovar-refGene','annovar-knownGene','annovar-ensGene','SnpEff','illumina','VEP']:
         if os.path.isfile(tType):
             annrows = set([x.strip().split('\t')[0] for x in open(tType).readlines()])
             if len(annrows) != 2: parser.error('Custom annotations file must contain Gene and Effect as row names')
@@ -793,7 +793,7 @@ def load_nonsilent_terms(tType):
                  'nonframeshift_deletion','nonframeshift_insertion','nonframeshift_substitution',
                  'nonsynonymous_SNV','stopgain','stoploss']
         return terms
-    elif tType == 'SnpEff':
+    elif tType in ['SnpEff', 'VEP']:
         terms = ["missense_variant","stop_gained","frameshift_variant","inframe_deletion", #"splice_region_variant",
                  "splice_acceptor_variant","splice_donor_variant","inframe_insertion",
                  "stop_lost","start_lost","disruptive_inframe_deletion","disruptive_inframe_insertion",
@@ -816,6 +816,22 @@ def load_nonsilent_terms(tType):
                 else: terms['terms'][val].append(term)
 
         return terms
+
+def load_blacklist(bl_fn):
+    '''
+    Load blacklist regions and return dictionary.
+    Requires first four columns to be: contig (chromosome), position, ref base, alt base
+    '''
+    blacklist = {}
+    for line in open(bl_fn).readlines():
+        l = line.strip().split('\t')
+        chrom,pos,ref,alt = tuple(l[0:4])
+
+        if chrom not in blacklist: blacklist[chrom] = set()
+        var_info = '%s_%s_%s'%(pos,ref,alt)
+        blacklist[chrom].add(var_info)
+
+    return blacklist
 
 def count_mutations_from_vcfs(VCFs,names,genes,terms,tType,snps_only,blacklist=None,mapr=None):
     '''
@@ -840,6 +856,8 @@ def count_mutations_from_vcfs(VCFs,names,genes,terms,tType,snps_only,blacklist=N
         func_val = 'Func.ensGene'
     elif tType == 'SnpEff':
         anno_val, gname_val = 'ANN', 'ANN'
+    elif tType == 'VEP':
+        anno_val, gname_val = 'CSQ', 'CSQ'
 
     # count vars
     for j,vcf_f in enumerate(VCFs):
@@ -901,7 +919,7 @@ def count_mutations_from_vcfs(VCFs,names,genes,terms,tType,snps_only,blacklist=N
                                         else: 
                                             if g.name in msinfo: nonsilent = True
                             except KeyError: pass
-                        elif tType == 'SnpEff': # new 2021-05-11
+                        elif tType in ['SnpEff', 'VEP']: # new 2021-05-11; update with VEP 2021-05-19
                             try:
                                 ANN = v.INFO[anno_val]
                                 for ann in ANN.split(','):
@@ -1098,6 +1116,8 @@ def get_local_background(genes,VCFs,names,terms,tType,snps_only,blacklist=None,f
         func_val = 'Func.ensGene'
     elif tType == 'SnpEff':
         anno_val, gname_val = 'ANN', 'ANN'
+    elif tType == 'VEP':
+        anno_val, gname_val = 'CSQ', 'CSQ'
 
     # Loop over VCFs
     for j,vcf_f in enumerate(VCFs):
@@ -1199,7 +1219,7 @@ def get_local_background(genes,VCFs,names,terms,tType,snps_only,blacklist=None,f
                                                     else: 
                                                         if g.name in msinfo: nonsilent = True
                                         except KeyError: pass
-                                    elif tType == 'SnpEff': # new 2021-05-11
+                                    elif tType in ['SnpEff', 'VEP']: # new 2021-05-11; update with VEP 2021-05-19
                                         try:
                                             ANN = v.INFO[anno_val]
                                             for ann in ANN.split(','):
